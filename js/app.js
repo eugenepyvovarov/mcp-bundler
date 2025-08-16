@@ -19,6 +19,11 @@ document.addEventListener('alpine:init', () => {
     selectedServer: null,
     selectedBundle: null,
     bundleDetailsView: false,
+    showBundleDropdown: null, // Track which server's dropdown is open
+    
+    // Server details state
+    showServerDetailsModal: false,
+    selectedServerForDetails: null,
     
     // Toast notification state
     toast: {
@@ -59,6 +64,13 @@ document.addEventListener('alpine:init', () => {
       return !this.isOnline && !this.isLocalFile && window.location.protocol.startsWith('http');
     },
     
+    get sortedBundles() {
+      // Return bundles sorted by latest updated date
+      return [...Alpine.store('bundles').items].sort((a, b) => 
+        new Date(b.updated) - new Date(a.updated)
+      );
+    },
+    
     // Lifecycle methods
     init() {
       console.log('MCP Catalogue app initializing...');
@@ -71,6 +83,7 @@ document.addEventListener('alpine:init', () => {
       this.setupInstallPrompt();
       this.registerServiceWorker();
       this.setupOfflineDetection();
+      this.setupURLRouting();
       this.handleURLImport();
       
       // Check for shared bundle in URL
@@ -181,19 +194,39 @@ document.addEventListener('alpine:init', () => {
     },
     
     addToBundle(server) {
-      // If there's a current bundle, add directly to it
-      const currentBundle = Alpine.store('bundles').current;
-      if (currentBundle) {
-        this.addServerToBundle(currentBundle.id, server);
-      } else {
-        // Otherwise show bundle selector
+      const bundles = Alpine.store('bundles').items;
+      
+      // If no bundles exist, show modal to create first bundle
+      if (bundles.length === 0) {
         this.showBundleSelector(server);
+        return;
+      }
+      
+      // If bundles exist, toggle dropdown for this server
+      if (this.showBundleDropdown === server.id) {
+        this.showBundleDropdown = null;
+      } else {
+        this.showBundleDropdown = server.id;
       }
     },
     
     showBundleSelector(server) {
       this.selectedServer = server;
       this.showBundleSelectorModal = true;
+      this.showBundleDropdown = null; // Close any open dropdown
+    },
+    
+    selectBundleFromDropdown(bundleId, server) {
+      this.addServerToBundle(bundleId, server);
+      this.showBundleDropdown = null; // Close dropdown after selection
+    },
+    
+    createNewBundleFromDropdown(server) {
+      this.showBundleSelector(server);
+    },
+    
+    closeBundleDropdown() {
+      this.showBundleDropdown = null;
     },
     
     addServerToBundle(bundleId, server) {
@@ -245,9 +278,28 @@ document.addEventListener('alpine:init', () => {
       this.bundleDetailsView = true;
     },
     
+    viewBundleDetailsWithURL(bundle) {
+      this.navigateToBundle(bundle);
+    },
+    
     closeBundleDetails() {
       this.selectedBundle = null;
       this.bundleDetailsView = false;
+    },
+    
+    // Server details functionality
+    viewServerDetails(server) {
+      this.selectedServerForDetails = server;
+      this.showServerDetailsModal = true;
+    },
+    
+    viewServerDetailsWithURL(server) {
+      this.navigateToServer(server);
+    },
+    
+    closeServerDetails() {
+      this.selectedServerForDetails = null;
+      this.showServerDetailsModal = false;
     },
     
     removeServerFromBundle(serverId, bundleId) {
@@ -291,29 +343,6 @@ document.addEventListener('alpine:init', () => {
       }
     },
     
-    isInCurrentBundle(serverId) {
-      return Alpine.store('bundles').hasServer(serverId);
-    },
-    
-    // Current bundle management
-    selectBundle(bundle) {
-      Alpine.store('bundles').setCurrent(bundle.id);
-      this.showToast(`Selected bundle: ${bundle.name}`);
-    },
-    
-    clearCurrentBundle() {
-      Alpine.store('bundles').setCurrent(null);
-      this.showToast('No bundle selected');
-    },
-    
-    getCurrentBundle() {
-      return Alpine.store('bundles').current;
-    },
-    
-    isCurrentBundle(bundleId) {
-      const current = Alpine.store('bundles').current;
-      return current ? current.id === bundleId : false;
-    },
     
     // Sharing methods
     shareBundle(bundle) {
@@ -600,7 +629,6 @@ document.addEventListener('alpine:init', () => {
       
       try {
         Alpine.store('bundles').items = [];
-        Alpine.store('bundles').current = null;
         Alpine.store('bundles').save();
         
         Alpine.store('credentials').clear();
@@ -723,15 +751,88 @@ document.addEventListener('alpine:init', () => {
       });
     },
     
-    // URL handling
-    handleURLImport() {
+    // URL routing
+    setupURLRouting() {
+      // Handle initial route
+      this.handleRouteChange();
+      
+      // Listen for hash changes
+      window.addEventListener('hashchange', () => {
+        this.handleRouteChange();
+      });
+      
       // Listen for popstate events (back/forward navigation)
       window.addEventListener('popstate', () => {
-        if (window.location.hash.startsWith('#/bundle/')) {
-          const encodedData = window.location.hash.replace('#/bundle/', '');
-          this.importFromURL(encodedData);
-        }
+        this.handleRouteChange();
       });
+    },
+    
+    handleRouteChange() {
+      const hash = window.location.hash;
+      
+      if (hash.startsWith('#/bundle/')) {
+        // Shared bundle import
+        const encodedData = hash.replace('#/bundle/', '');
+        this.importFromURL(encodedData);
+      } else if (hash.startsWith('#/server/')) {
+        // Individual server view
+        const serverId = hash.replace('#/server/', '');
+        this.viewServerFromURL(serverId);
+      } else if (hash.startsWith('#/my-bundle/')) {
+        // Individual bundle view
+        const bundleId = hash.replace('#/my-bundle/', '');
+        this.viewBundleFromURL(bundleId);
+      } else if (hash === '#/bundles') {
+        // Bundles list view
+        this.currentView = 'bundles';
+      } else if (hash === '#/settings') {
+        // Settings view
+        this.currentView = 'settings';
+      } else if (hash === '#/' || hash === '') {
+        // Home/catalogue view
+        this.currentView = 'catalogue';
+      }
+    },
+    
+    // Navigation with URL updates
+    navigateToView(view) {
+      this.currentView = view;
+      if (view === 'catalogue') {
+        window.location.hash = '#/';
+      } else {
+        window.location.hash = `#/${view}`;
+      }
+    },
+    
+    navigateToServer(server) {
+      this.viewServerDetails(server);
+      window.location.hash = `#/server/${server.id}`;
+    },
+    
+    navigateToBundle(bundle) {
+      this.viewBundleDetails(bundle);
+      window.location.hash = `#/my-bundle/${bundle.id}`;
+    },
+    
+    viewServerFromURL(serverId) {
+      const server = this.servers.find(s => s.id === serverId);
+      if (server) {
+        this.currentView = 'catalogue';
+        this.viewServerDetails(server);
+      }
+    },
+    
+    viewBundleFromURL(bundleId) {
+      const bundle = Alpine.store('bundles').items.find(b => b.id === bundleId);
+      if (bundle) {
+        this.currentView = 'bundles';
+        this.viewBundleDetails(bundle);
+      }
+    },
+
+    // URL handling
+    handleURLImport() {
+      // This is now handled in setupURLRouting
     },
     
     // Utility methods

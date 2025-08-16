@@ -72,7 +72,6 @@ const debouncedSave = (key, data, delay = 500) => {
 document.addEventListener('alpine:init', () => {
   Alpine.store('bundles', {
     items: storage.get(STORAGE_KEYS.bundles) || [],
-    current: null,
     
     // Create new bundle
     create(name, description = '') {
@@ -89,7 +88,6 @@ document.addEventListener('alpine:init', () => {
       };
       
       this.items.push(bundle);
-      this.current = bundle;
       this.save();
       
       console.log('Bundle created:', bundle.name);
@@ -106,9 +104,6 @@ document.addEventListener('alpine:init', () => {
         updated: new Date().toISOString()
       });
       
-      if (this.current && this.current.id === bundleId) {
-        this.current = bundle;
-      }
       
       this.save();
       console.log('Bundle updated:', bundle.name);
@@ -123,61 +118,15 @@ document.addEventListener('alpine:init', () => {
       const bundle = this.items[index];
       this.items.splice(index, 1);
       
-      if (this.current && this.current.id === bundleId) {
-        this.current = null;
-      }
       
       this.save();
       console.log('Bundle deleted:', bundle.name);
       return true;
     },
     
-    // Add server to current bundle
-    addServer(serverId) {
-      if (!this.current) return false;
-      
-      if (!this.current.servers.includes(serverId)) {
-        this.current.servers.push(serverId);
-        this.current.updated = new Date().toISOString();
-        this.save();
-        console.log('Server added to bundle:', serverId);
-        return true;
-      }
-      
-      return false;
-    },
-    
-    // Remove server from current bundle
-    removeServer(serverId) {
-      if (!this.current) return false;
-      
-      const index = this.current.servers.indexOf(serverId);
-      if (index > -1) {
-        this.current.servers.splice(index, 1);
-        this.current.updated = new Date().toISOString();
-        this.save();
-        console.log('Server removed from bundle:', serverId);
-        return true;
-      }
-      
-      return false;
-    },
-    
-    // Set current bundle
-    setCurrent(bundleId) {
-      const bundle = this.items.find(b => b.id === bundleId);
-      this.current = bundle || null;
-      return this.current;
-    },
-    
     // Get bundle by ID
     getById(bundleId) {
       return this.items.find(b => b.id === bundleId) || null;
-    },
-    
-    // Check if server is in current bundle
-    hasServer(serverId) {
-      return this.current ? this.current.servers.includes(serverId) : false;
     },
     
     // Save to localStorage with debouncing
@@ -201,7 +150,6 @@ document.addEventListener('alpine:init', () => {
       }
       
       this.items = data.bundles;
-      this.current = null;
       this.save();
       console.log('Bundles imported:', data.bundles.length);
     }
