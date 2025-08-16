@@ -1,19 +1,42 @@
 // sw.js - Cache-first strategy for offline functionality
-const CACHE_NAME = 'mcp-cat-v1';
-const STATIC_CACHE = 'mcp-cat-static-v1';
-const DYNAMIC_CACHE = 'mcp-cat-dynamic-v1';
+const VERSION = '1.0.0';
+const CACHE_NAME = `mcp-cat-v${VERSION}`;
+const STATIC_CACHE = `mcp-cat-static-v${VERSION}`;
+const DYNAMIC_CACHE = `mcp-cat-dynamic-v${VERSION}`;
 
 const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './css/app.css',
-  './js/app.js',
-  './js/store.js',
-  './js/crypto.js',
+  `./css/app.css?v=${VERSION}`,
+  `./css/tailwind.css?v=${VERSION}`,
+  `./js/app.js?v=${VERSION}`,
+  `./js/store.js?v=${VERSION}`,
+  `./js/crypto.js?v=${VERSION}`,
   './data/servers.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  // SVG Icons
+  './icons/search.svg',
+  './icons/close.svg',
+  './icons/back.svg',
+  './icons/down.svg',
+  './icons/right.svg',
+  './icons/add.svg',
+  './icons/edit.svg',
+  './icons/delete.svg',
+  './icons/share.svg',
+  './icons/download.svg',
+  './icons/info.svg',
+  './icons/key.svg',
+  './icons/official.svg',
+  './icons/warning.svg',
+  './icons/success.svg',
+  './icons/server.svg',
+  './icons/calendar.svg',
+  './icons/package.svg',
+  './icons/folder.svg',
+  './icons/settings.svg',
   'https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js',
   'https://cdn.tailwindcss.com'
 ];
@@ -42,16 +65,18 @@ self.addEventListener('activate', event => {
   console.log('[SW] Activating service worker...');
   event.waitUntil(
     caches.keys().then(cacheNames => {
+      const currentCaches = [STATIC_CACHE, DYNAMIC_CACHE, CACHE_NAME];
       return Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheName !== STATIC_CACHE && cacheName !== DYNAMIC_CACHE) {
+          // Delete any cache that doesn't match current version
+          if (!currentCaches.includes(cacheName) && cacheName.startsWith('mcp-cat-')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     }).then(() => {
-      console.log('[SW] Service worker activated');
+      console.log('[SW] Service worker activated with version:', VERSION);
       return self.clients.claim();
     })
   );

@@ -16,10 +16,13 @@ document.addEventListener('alpine:init', () => {
     
     // Bundle management state
     showBundleSelectorModal: false,
+    showCreateBundleModal: false,
     selectedServer: null,
     selectedBundle: null,
     bundleDetailsView: false,
     showBundleDropdown: null, // Track which server's dropdown is open
+    newBundleName: '',
+    newBundleDescription: '',
     
     // Server details state
     showServerDetailsModal: false,
@@ -266,6 +269,12 @@ document.addEventListener('alpine:init', () => {
       this.showBundleDropdown = null;
     },
     
+    isServerInAnyBundle(server) {
+      if (!server) return false;
+      const bundles = Alpine.store('bundles').items;
+      return bundles.some(bundle => bundle.servers.includes(server.id));
+    },
+
     addServerToBundle(bundleId, server) {
       try {
         const bundle = Alpine.store('bundles').items.find(b => b.id === bundleId);
@@ -294,19 +303,47 @@ document.addEventListener('alpine:init', () => {
     },
     
     createBundleAndAddServer(server) {
-      // Close the bundle selector modal first
+      // Close the bundle selector modal and show create bundle modal
       this.showBundleSelectorModal = false;
+      this.showCreateBundleModal = true;
+      this.selectedServer = server;
+      this.newBundleName = '';
+      this.newBundleDescription = '';
+    },
+
+    openCreateBundleModal() {
+      this.showCreateBundleModal = true;
+      this.selectedServer = null; // No server to add when creating from bundles page
+      this.newBundleName = '';
+      this.newBundleDescription = '';
+    },
+
+    createBundleWithModal(server) {
+      if (!this.newBundleName?.trim()) return;
       
-      // Switch to bundles view and trigger new bundle creation
-      this.currentView = 'bundles';
-      
-      // Create the bundle using the existing method that will handle the flow
-      setTimeout(() => {
-        this.createNewBundle();
+      try {
+        const bundle = Alpine.store('bundles').create(this.newBundleName.trim(), this.newBundleDescription.trim());
         
-        // After bundle creation, add the server
-        // Note: createNewBundle shows a prompt, but we'll improve this later
-      }, 100);
+        // Add the server to the new bundle
+        if (server) {
+          bundle.servers.push(server.id);
+          bundle.updated = new Date().toISOString();
+          Alpine.store('bundles').save();
+        }
+        
+        // Close modal and show success
+        this.showCreateBundleModal = false;
+        this.showToast(`Bundle "${bundle.name}" created successfully!`);
+        
+        // Clear form
+        this.newBundleName = '';
+        this.newBundleDescription = '';
+        this.selectedServer = null;
+        
+      } catch (error) {
+        console.error('Failed to create bundle:', error);
+        this.showToast('Failed to create bundle', 'error');
+      }
     },
     
     // Bundle details functionality
