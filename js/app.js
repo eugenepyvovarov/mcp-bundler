@@ -71,6 +71,18 @@ document.addEventListener('alpine:init', () => {
       );
     },
     
+    // Reset all modal states on initialization
+    resetModalStates() {
+      this.showBundleSelectorModal = false;
+      this.selectedServer = null;
+      this.selectedBundle = null;
+      this.bundleDetailsView = false;
+      this.showBundleDropdown = null;
+      this.showServerDetailsModal = false;
+      this.selectedServerForDetails = null;
+      this.importPreview = null;
+    },
+    
     // Lifecycle methods
     init() {
       console.log('MCP Catalogue app initializing...');
@@ -79,6 +91,10 @@ document.addEventListener('alpine:init', () => {
       console.log('isOnline initial:', this.isOnline);
       console.log('navigator.onLine:', navigator.onLine);
       console.log('showOfflineIndicator:', this.showOfflineIndicator);
+      
+      // Reset all modal states first
+      this.resetModalStates();
+      
       this.loadServers();
       this.setupInstallPrompt();
       this.registerServiceWorker();
@@ -285,6 +301,8 @@ document.addEventListener('alpine:init', () => {
     closeBundleDetails() {
       this.selectedBundle = null;
       this.bundleDetailsView = false;
+      // Return to bundles list
+      window.location.hash = '#/bundles';
     },
     
     // Server details functionality
@@ -300,6 +318,8 @@ document.addEventListener('alpine:init', () => {
     closeServerDetails() {
       this.selectedServerForDetails = null;
       this.showServerDetailsModal = false;
+      // Return to catalogue
+      window.location.hash = '#/';
     },
     
     removeServerFromBundle(serverId, bundleId) {
@@ -769,6 +789,15 @@ document.addEventListener('alpine:init', () => {
     
     handleRouteChange() {
       const hash = window.location.hash;
+      
+      // First reset all modal states
+      this.showBundleSelectorModal = false;
+      this.bundleDetailsView = false;
+      this.showServerDetailsModal = false;
+      this.showBundleDropdown = null;
+      this.selectedServer = null;
+      this.selectedBundle = null;
+      this.selectedServerForDetails = null;
       
       if (hash.startsWith('#/bundle/')) {
         // Shared bundle import
