@@ -5,46 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#1a202c">
     
-    <!-- NUCLEAR cache busting for development -->
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0, post-check=0, pre-check=0">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <meta http-equiv="Last-Modified" content="0">
-    <meta http-equiv="If-Modified-Since" content="0">
-    <meta http-equiv="Vary" content="*">
-    <meta http-equiv="ETag" content="">
+    <!-- Proper cache control for production -->
+    <meta http-equiv="Cache-Control" content="public, max-age=3600">
     <script>
-    // Force reload if cached
-    if (performance.navigation.type == performance.navigation.TYPE_BACK_FORWARD) {
-        location.reload(true);
-    }
+    // Global development detection
+    window.isDevelopment = window.location.protocol === 'file:' || 
+                          (window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1');
+    
+    // Disable auto-reload to prevent infinite loops
+    // if (window.isDevelopment && performance.navigation.type == performance.navigation.TYPE_BACK_FORWARD) {
+    //     location.reload(true);
+    // }
     </script>
     
-    <!-- Disable service worker during development and clear all caches -->
+    <!-- Development cache management -->
     <script>
     async function clearAllCaches() {
-      // Only clear caches in development (not HTTPS production)
-      const isDevelopment = window.location.protocol === 'file:' || 
-                           (window.location.protocol === 'http:' && 
-                            window.location.hostname !== 'localhost' && 
-                            window.location.hostname !== '127.0.0.1');
+      // Only clear caches in development
       
-      if (!isDevelopment) {
+      if (!window.isDevelopment) {
         console.log('Cache clearing skipped in production');
         return;
       }
       
       try {
-        // Unregister all service workers
+        // Unregister all service workers in development
         if ('serviceWorker' in navigator) {
           const registrations = await navigator.serviceWorker.getRegistrations();
           for (let registration of registrations) {
-            console.log('Unregistering service worker:', registration);
+            console.log('Unregistering service worker for development:', registration);
             await registration.unregister();
           }
         }
         
-        // Clear all caches
+        // Clear all caches in development
         if ('caches' in window) {
           const cacheNames = await caches.keys();
           for (const cacheName of cacheNames) {
@@ -53,17 +48,42 @@
           }
         }
         
-        console.log('All caches and service workers cleared for development');
+        console.log('Development: All caches and service workers cleared');
       } catch (error) {
         console.warn('Failed to clear caches:', error);
       }
     }
     
-    // Clear caches on page load in development
-    clearAllCaches();
+    // Only clear caches once per session to avoid reload loops
+    const cacheCleared = sessionStorage.getItem('cacheCleared');
+    if (window.isDevelopment && !cacheCleared) {
+      clearAllCaches();
+      sessionStorage.setItem('cacheCleared', 'true');
+    }
     
     // Add manual cache clear function for debugging
     window.clearAllCaches = clearAllCaches;
+    
+    // Register service worker in production only
+    if (!window.isDevelopment && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js')
+        .then(registration => {
+          console.log('Service Worker registered:', registration);
+        })
+        .catch(error => {
+          console.error('Service Worker registration failed:', error);
+        });
+    } else if (window.isDevelopment) {
+      console.log('Service Worker disabled in development mode');
+    }
+    
+    // Cache fix validation logging
+    console.log('🔧 Cache Fix Status:');
+    console.log(`   Environment: ${window.isDevelopment ? 'Development' : 'Production'}`);
+    console.log(`   Cache clearing: ${window.isDevelopment ? 'Enabled' : 'Disabled'}`);
+    console.log(`   Service Worker: ${!window.isDevelopment && 'serviceWorker' in navigator ? 'Enabled' : 'Disabled'}`);
+    console.log(`   Cache API support: ${'caches' in window ? 'Available' : 'Not available'}`);
+    console.log('✅ Cache configuration applied successfully');
     </script>
     
     <!-- PWA Meta Tags -->
@@ -84,25 +104,47 @@
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
-    <!-- Custom scripts - ULTRA aggressive cache bust -->
+    <!-- Resource loading with proper cache versioning -->
     <script>
-    // Nuclear option cache busting with timestamp + random + performance.now()
-    const cacheBust = Date.now() + '_' + Math.random().toString(36).substr(2, 9) + '_' + performance.now().toString().replace('.', '');
-    console.log('Cache bust ID:', cacheBust);
+    // Use cache busting only in development
+    const version = '1.0.0'; // Update this when deploying new versions
+    const cacheBust = window.isDevelopment ? Date.now() : version;
     
-    // Load Tailwind CSS with dynamic cache bust
-    document.write('<link rel="stylesheet" href="./css/tailwind.css?v=' + cacheBust + '&nocache=true">');
+    if (window.isDevelopment) {
+      console.log('Development mode: Cache bust ID:', cacheBust);
+    }
     
-    // Load JS files with cache busting
-    document.write('<script src="./js/crypto.js?v=' + cacheBust + '&r=' + Math.random() + '&nocache=true&ts=' + Date.now() + '"><\/script>');
-    document.write('<script src="./js/store.js?v=' + cacheBust + '&r=' + Math.random() + '&nocache=true&ts=' + Date.now() + '"><\/script>');
-    document.write('<script src="./js/app.js?v=' + cacheBust + '&r=' + Math.random() + '&nocache=true&ts=' + Date.now() + '"><\/script>');
+    // Load resources with appropriate versioning
+    document.write('<link rel="stylesheet" href="./css/tailwind.css?v=' + cacheBust + '">');
+    document.write('<link rel="stylesheet" href="./css/app.css?v=' + cacheBust + '">');
+    document.write('<script src="./js/crypto.js?v=' + cacheBust + '"><\/script>');
+    document.write('<script src="./js/store.js?v=' + cacheBust + '"><\/script>');
+    document.write('<script src="./js/app.js?v=' + cacheBust + '"><\/script>');
     </script>
     
-    <!-- Custom styles with dynamic cache bust -->
+    <!-- Only hide elements before Alpine.js loads -->
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+    
+    <!-- Fix modal x-cloak handling after Alpine.js loads -->
     <script>
-    document.write('<link rel="stylesheet" href="./css/app.css?v=' + cacheBust + '&nocache=true">');
+        document.addEventListener('alpine:initialized', () => {
+            // Remove x-cloak from all modal elements so Alpine.js can properly manage them
+            const modals = document.querySelectorAll('[x-show][x-cloak]');
+            modals.forEach(modal => {
+                const expression = modal.getAttribute('x-show');
+                
+                // For modal elements, always remove x-cloak and let Alpine.js handle visibility
+                if (expression === 'showServerDetailsModal' || 
+                    expression === 'showBundleSelectorModal' || 
+                    expression === 'bundleDetailsView') {
+                    modal.removeAttribute('x-cloak');
+                }
+            });
+        });
     </script>
+    
 </head>
 <body class="bg-gray-50 text-gray-900 overflow-x-hidden">
     <!-- Main App Container -->
@@ -351,6 +393,215 @@
                 </div>
             </div>
             
+            <!-- Bundle Details Page View -->
+            <div x-show="currentView === 'bundle-details'" class="max-w-6xl mx-auto">
+                <!-- Header -->
+                <div class="mb-8">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div class="flex items-center gap-4">
+                            <button @click="navigateToView('bundles')" 
+                                    class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                    title="Back to bundles">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                                </svg>
+                            </button>
+                            <div class="min-w-0 flex-1">
+                                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 truncate" x-text="selectedBundle?.name || 'Bundle Details'"></h1>
+                                <p class="text-gray-600 mt-1" x-text="selectedBundle?.description || 'Loading bundle information...'"></p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 shrink-0">
+                            <button @click="shareBundle(selectedBundle)" 
+                                    class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"></path>
+                                </svg>
+                                Share
+                            </button>
+                            <button @click="exportBundle(selectedBundle)" 
+                                    class="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                Export
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Bundle Info Cards -->
+                <div class="grid grid-cols-3 gap-4 md:gap-6 mb-8">
+                    <div class="bg-white rounded-xl border border-gray-200 p-4 md:p-6 text-center">
+                        <div class="inline-flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg mb-3">
+                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-sm font-medium text-gray-500 mb-1">Servers</h3>
+                        <p class="text-3xl font-bold text-gray-900" x-text="selectedBundle?.servers?.length || 0"></p>
+                    </div>
+                    <div class="bg-white rounded-xl border border-gray-200 p-4 md:p-6 text-center">
+                        <div class="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-lg mb-3">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-sm font-medium text-gray-500 mb-1">Created</h3>
+                        <p class="text-lg font-semibold text-gray-900" x-text="formatDate(selectedBundle?.created) || 'Unknown'"></p>
+                    </div>
+                    <div class="bg-white rounded-xl border border-gray-200 p-4 md:p-6 text-center">
+                        <div class="inline-flex items-center justify-center w-12 h-12 bg-purple-100 rounded-lg mb-3">
+                            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-sm font-medium text-gray-500 mb-1">Last Updated</h3>
+                        <p class="text-lg font-semibold text-gray-900" x-text="formatDate(selectedBundle?.updated) || 'Unknown'"></p>
+                    </div>
+                </div>
+                
+                <!-- Servers List -->
+                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div class="px-6 py-5 border-b border-gray-200">
+                        <div class="flex items-center">
+                            <div class="inline-flex items-center justify-center w-10 h-10 bg-gray-100 rounded-lg mr-3">
+                                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900">Servers in Bundle</h3>
+                                <p class="text-sm text-gray-600">Configure each server's credentials and settings</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="divide-y divide-gray-200">
+                        <!-- Server Cards -->
+                        <template x-for="server in getBundleServers(selectedBundle || {})" :key="server.id">
+                            <div class="p-6">
+                                <div class="flex items-start justify-between mb-4">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-3 mb-2">
+                                            <h4 class="text-lg font-semibold text-gray-900" x-text="server.name"></h4>
+                                            <span x-show="server.official" 
+                                                  class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Official
+                                            </span>
+                                        </div>
+                                        <p class="text-gray-600 mb-3" x-text="server.description"></p>
+                                        
+                                        <!-- Tags -->
+                                        <div class="flex flex-wrap gap-2 mb-4">
+                                            <template x-for="tag in server.tags || []" :key="tag">
+                                                <span class="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-sm rounded-md" x-text="tag"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    
+                                    <button @click="removeServerFromBundle(server.id, selectedBundle.id)"
+                                            class="ml-4 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Remove from bundle">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                                
+                                <!-- Credentials Section -->
+                                <div x-show="server.requiredSecrets && server.requiredSecrets.length > 0" class="bg-gray-50 rounded-lg p-4">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <h5 class="font-medium text-gray-900">Required Credentials</h5>
+                                        <span class="text-xs px-2 py-1 rounded-full"
+                                              :class="getCredentialStatus(server.id) === 'complete' ? 'bg-green-100 text-green-800' : 
+                                                     getCredentialStatus(server.id) === 'incomplete' ? 'bg-yellow-100 text-yellow-800' : 
+                                                     getCredentialStatus(server.id) === 'locked' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'"
+                                              x-text="getCredentialStatus(server.id) === 'complete' ? 'Complete' : 
+                                                     getCredentialStatus(server.id) === 'incomplete' ? 'Incomplete' : 
+                                                     getCredentialStatus(server.id) === 'locked' ? 'Locked' : 'None Required'">
+                                        </span>
+                                    </div>
+                                    
+                                    <div class="space-y-3">
+                                        <template x-for="secret in server.requiredSecrets || []" :key="secret">
+                                            <div class="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                                                <div class="flex-1">
+                                                    <div class="font-medium text-sm" x-text="secret"></div>
+                                                    <div class="text-xs text-gray-500">Environment variable or API key</div>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-xs"
+                                                          :class="Alpine.store('credentials').isUnlocked && Alpine.store('credentials').get(server.id)?.[secret] ? 'text-green-600' : 'text-gray-400'"
+                                                          x-text="Alpine.store('credentials').isUnlocked && Alpine.store('credentials').get(server.id)?.[secret] ? '✓ Set' : '○ Not Set'">
+                                                    </span>
+                                                    <button @click="setCredential(server.id, secret)"
+                                                            class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
+                                                        <span x-text="Alpine.store('credentials').isUnlocked && Alpine.store('credentials').get(server.id)?.[secret] ? 'Update' : 'Set'"></span>
+                                                    </button>
+                                                    <button x-show="Alpine.store('credentials').isUnlocked && Alpine.store('credentials').get(server.id)?.[secret]"
+                                                            @click="removeCredential(server.id, secret)"
+                                                            class="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors">
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    
+                                    <!-- Unlock credentials prompt -->
+                                    <div x-show="!Alpine.store('credentials').isUnlocked" class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                        <div class="flex items-center">
+                                            <svg class="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            <span class="text-sm text-yellow-800">Unlock credentials to manage server secrets</span>
+                                            <button @click="unlockCredentials()" 
+                                                    class="ml-auto px-2 py-1 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors">
+                                                Unlock
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- No credentials required -->
+                                <div x-show="!server.requiredSecrets || server.requiredSecrets.length === 0" 
+                                     class="bg-green-50 rounded-lg p-3">
+                                    <div class="flex items-center text-green-800">
+                                        <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        <span class="text-sm">No credentials required</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        
+                        <!-- Empty state -->
+                        <div x-show="!selectedBundle?.servers || selectedBundle.servers.length === 0" 
+                             class="py-16 text-center">
+                            <div class="mx-auto h-16 w-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                                <svg class="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2-2v-6a2 2 0 00-2-2M5 7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v2M7 13h10"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">No servers in bundle</h3>
+                            <p class="text-gray-500 mb-6 max-w-md mx-auto">Add servers to this bundle from the catalogue to get started with your configuration.</p>
+                            <button @click="navigateToView('catalogue')" 
+                                    class="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                </svg>
+                                Browse Catalogue
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Settings View -->
             <div x-show="currentView === 'settings'">
                 <div class="mb-6">
@@ -451,6 +702,142 @@
                             <p>Version 1.0.0</p>
                             <p>A Progressive Web App for managing MCP server bundles</p>
                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Server Details Modal -->
+            <div x-show="showServerDetailsModal" 
+                 class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <div class="flex justify-between items-start mb-4">
+                        <h2 class="text-xl font-semibold" x-text="selectedServerForDetails?.name"></h2>
+                        <button @click="closeServerDetails()" 
+                                class="text-gray-400 hover:text-gray-600 transition-colors">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <!-- Description -->
+                        <div>
+                            <h3 class="font-medium text-gray-900 mb-2">Description</h3>
+                            <p class="text-gray-600" x-text="selectedServerForDetails?.description"></p>
+                        </div>
+                        
+                        <!-- Category -->
+                        <div>
+                            <h3 class="font-medium text-gray-900 mb-2">Category</h3>
+                            <span class="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-md" 
+                                  x-text="selectedServerForDetails?.category"></span>
+                        </div>
+                        
+                        <!-- Tags -->
+                        <div x-show="selectedServerForDetails?.tags && selectedServerForDetails.tags.length > 0">
+                            <h3 class="font-medium text-gray-900 mb-2">Tags</h3>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="tag in selectedServerForDetails?.tags || []">
+                                    <span class="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-sm rounded-md" 
+                                          x-text="tag"></span>
+                                </template>
+                            </div>
+                        </div>
+                        
+                        <!-- Official badge -->
+                        <div x-show="selectedServerForDetails?.official">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="text-green-700 text-sm font-medium">Official Server</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Required Secrets -->
+                        <div x-show="selectedServerForDetails?.requiredSecrets && selectedServerForDetails.requiredSecrets.length > 0">
+                            <h3 class="font-medium text-gray-900 mb-2">Required Secrets</h3>
+                            <div class="space-y-2">
+                                <template x-for="secret in selectedServerForDetails?.requiredSecrets || []">
+                                    <div class="flex items-center justify-between p-2 bg-yellow-50 border border-yellow-200 rounded">
+                                        <span class="text-sm font-mono" x-text="secret"></span>
+                                        <span class="text-xs text-yellow-600">Required</span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-3 mt-6">
+                        <button @click="addToBundle(selectedServerForDetails)" 
+                                class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                            Add to Bundle
+                        </button>
+                        <button @click="closeServerDetails()" 
+                                class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bundle Selector Modal -->
+            <div x-show="showBundleSelectorModal" 
+                 class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
+                    <div class="flex justify-between items-start mb-4">
+                        <h2 class="text-lg font-semibold">Add to Bundle</h2>
+                        <button @click="showBundleSelectorModal = false" 
+                                class="text-gray-400 hover:text-gray-600 transition-colors">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-600 mb-3">
+                            Add <span class="font-medium" x-text="selectedServer?.name"></span> to a bundle:
+                        </p>
+                        
+                        <!-- Existing bundles -->
+                        <div x-show="sortedBundles.length > 0" class="mb-4">
+                            <h3 class="text-sm font-medium text-gray-900 mb-2">Select existing bundle:</h3>
+                            <div class="space-y-2">
+                                <template x-for="bundle in sortedBundles">
+                                    <button @click="addServerToBundle(bundle.id, selectedServer)"
+                                            class="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                                        <div class="font-medium" x-text="bundle.name"></div>
+                                        <div class="text-sm text-gray-500" x-text="bundle.description"></div>
+                                        <div class="text-xs text-gray-400 mt-1">
+                                            <span x-text="bundle.servers.length"></span> servers
+                                        </div>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                        
+                        <!-- Create new bundle option -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-900 mb-2">Or create a new bundle:</h3>
+                            <button @click="createBundleAndAddServer(selectedServer)"
+                                    class="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors text-gray-600 hover:text-gray-700">
+                                <div class="flex items-center justify-center">
+                                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                    </svg>
+                                    Create New Bundle
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-3">
+                        <button @click="showBundleSelectorModal = false" 
+                                class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
+                            Cancel
+                        </button>
                     </div>
                 </div>
             </div>
@@ -570,283 +957,13 @@
            }
          }" 
          x-show="show" 
+         x-cloak
          x-transition 
+         style="display: none;"
          class="fixed top-0 left-0 right-0 bg-red-500 text-white text-center py-2 text-sm z-50">
         You're offline. Some features may be limited.
     </div>
     
-    <!-- Bundle Selector Modal -->
-    <div x-show="showBundleSelectorModal" 
-         x-cloak
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50"
-         @click.self="showBundleSelectorModal = false">
-        
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full max-h-96 overflow-hidden">
-            <div class="p-4 border-b border-gray-200">
-                <h3 class="text-lg font-semibold text-gray-900">Add to Bundle</h3>
-                <p class="text-sm text-gray-600 mt-1" x-text="selectedServer ? `Add ${selectedServer.name} to:` : ''"></p>
-            </div>
-            
-            <div class="p-4 max-h-64 overflow-y-auto">
-                <div x-show="Alpine.store('bundles').items.length === 0" class="text-center py-8">
-                    <p class="text-gray-500 mb-4">No bundles yet</p>
-                    <button @click="createBundleAndAddServer(selectedServer)" 
-                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                        Create First Bundle
-                    </button>
-                </div>
-                
-                <div x-show="Alpine.store('bundles').items.length > 0" class="space-y-2">
-                    <template x-for="bundle in Alpine.store('bundles').items" :key="bundle.id">
-                        <button @click="addServerToBundle(bundle.id, selectedServer)"
-                                class="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors">
-                            <div class="font-medium text-gray-900" x-text="bundle.name"></div>
-                            <div class="text-sm text-gray-600" x-text="bundle.description"></div>
-                            <div class="text-xs text-gray-500 mt-1">
-                                <span x-text="bundle.servers.length"></span> servers
-                            </div>
-                        </button>
-                    </template>
-                    
-                    <button @click="createBundleAndAddServer(selectedServer)" 
-                            class="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors">
-                        <div class="flex items-center justify-center">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                            </svg>
-                            Create New Bundle
-                        </div>
-                    </button>
-                </div>
-            </div>
-            
-            <div class="p-4 border-t border-gray-200 flex justify-end">
-                <button @click="showBundleSelectorModal = false" 
-                        class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Bundle Details Modal -->
-    <div x-show="bundleDetailsView"
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50"
-         @click.self="closeBundleDetails()">
-        
-        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-            <div class="p-4 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-900" x-text="selectedBundle?.name"></h3>
-                    <p class="text-sm text-gray-600" x-text="selectedBundle?.description"></p>
-                </div>
-                <button @click="closeBundleDetails()" 
-                        class="p-2 text-gray-400 hover:text-gray-600 transition-colors">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                </button>
-            </div>
-            
-            <div class="p-4 max-h-[60vh] overflow-y-auto">
-                <div class="flex items-center justify-between mb-4">
-                    <h4 class="font-medium text-gray-900">
-                        Servers (<span x-text="selectedBundle?.servers.length || 0"></span>)
-                    </h4>
-                    <div class="text-xs text-gray-500">
-                        Updated: <span x-text="selectedBundle ? new Date(selectedBundle.updated).toLocaleDateString() : ''"></span>
-                    </div>
-                </div>
-                
-                <div x-show="selectedBundle && selectedBundle.servers.length === 0" 
-                     class="text-center py-8 text-gray-500">
-                    <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-2.172a1 1 0 01-.707-.293l-2.414-2.414a1 1 0 00-.707-.293H8"></path>
-                    </svg>
-                    <p>No servers in this bundle yet</p>
-                </div>
-                
-                <div class="space-y-3">
-                    <template x-for="server in getBundleServers(selectedBundle || {})" :key="server?.id">
-                        <div class="border border-gray-200 rounded-lg p-4">
-                            <div class="flex items-start justify-between">
-                                <div class="flex-1">
-                                    <div class="flex items-center gap-2 mb-2">
-                                        <h5 class="font-semibold text-gray-900" x-text="server.name"></h5>
-                                        <span x-show="server.official" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                                            Official
-                                        </span>
-                                        <span x-show="server.requiredSecrets && server.requiredSecrets.length > 0"
-                                              class="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
-                                            🔒 Credentials
-                                        </span>
-                                    </div>
-                                    <p class="text-sm text-gray-600 mb-2" x-text="server.description"></p>
-                                    <div class="flex flex-wrap gap-1">
-                                        <template x-for="tag in server.tags" :key="tag">
-                                            <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full" x-text="tag"></span>
-                                        </template>
-                                    </div>
-                                </div>
-                                <button @click="removeServerFromBundle(server.id, selectedBundle.id)" 
-                                        class="ml-4 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Remove from bundle">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-                    </template>
-                </div>
-            </div>
-            
-            <div class="p-4 border-t border-gray-200 flex justify-between">
-                <div class="flex gap-2">
-                    <button @click="shareBundle(selectedBundle)" 
-                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                        Share Bundle
-                    </button>
-                    <button @click="exportBundle(selectedBundle)" 
-                            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-                        Export
-                    </button>
-                </div>
-                <button @click="closeBundleDetails()" 
-                        class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
-                    Close
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Server Details Modal -->
-    <div x-show="showServerDetailsModal"
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50"
-         @click.self="closeServerDetails()">
-        
-        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-            <div class="p-4 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-900" x-text="selectedServerForDetails?.name"></h3>
-                    <p class="text-sm text-gray-600" x-text="selectedServerForDetails?.description"></p>
-                </div>
-                <button @click="closeServerDetails()" 
-                        class="p-2 text-gray-400 hover:text-gray-600 transition-colors">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                </button>
-            </div>
-            
-            <div class="p-4 max-h-[60vh] overflow-y-auto">
-                <!-- Server Details -->
-                <div class="space-y-4">
-                    <!-- Basic Info -->
-                    <div>
-                        <h4 class="font-medium text-gray-900 mb-2">Basic Information</h4>
-                        <div class="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <span class="text-gray-500">Category:</span>
-                                <span x-text="selectedServerForDetails?.category" class="ml-2 capitalize"></span>
-                            </div>
-                            <div x-show="selectedServerForDetails?.official">
-                                <span class="text-gray-500">Status:</span>
-                                <span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">Official</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Tags -->
-                    <div x-show="selectedServerForDetails?.tags && selectedServerForDetails.tags.length > 0">
-                        <h4 class="font-medium text-gray-900 mb-2">Tags</h4>
-                        <div class="flex flex-wrap gap-2">
-                            <template x-for="tag in selectedServerForDetails?.tags || []" :key="tag">
-                                <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs" x-text="tag"></span>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- Required Secrets -->
-                    <div x-show="selectedServerForDetails?.requiredSecrets && selectedServerForDetails.requiredSecrets.length > 0">
-                        <h4 class="font-medium text-gray-900 mb-2">Required Credentials</h4>
-                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                            <p class="text-sm text-yellow-800 mb-2">This server requires the following credentials:</p>
-                            <div class="space-y-1">
-                                <template x-for="secret in selectedServerForDetails?.requiredSecrets || []" :key="secret">
-                                    <div class="flex items-center text-sm">
-                                        <svg class="w-4 h-4 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                        </svg>
-                                        <code class="bg-gray-100 px-2 py-1 rounded text-xs" x-text="secret"></code>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Configuration -->
-                    <div x-show="selectedServerForDetails?.config">
-                        <h4 class="font-medium text-gray-900 mb-2">Configuration</h4>
-                        <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                            <div x-show="selectedServerForDetails?.config?.command" class="mb-3">
-                                <span class="text-sm font-medium text-gray-700">Command:</span>
-                                <code class="block mt-1 p-2 bg-white border rounded text-sm" x-text="selectedServerForDetails?.config?.command"></code>
-                            </div>
-                            <div x-show="selectedServerForDetails?.config?.args && selectedServerForDetails.config.args.length > 0" class="mb-3">
-                                <span class="text-sm font-medium text-gray-700">Arguments:</span>
-                                <div class="mt-1 space-y-1">
-                                    <template x-for="arg in selectedServerForDetails?.config?.args || []" :key="arg">
-                                        <code class="block p-2 bg-white border rounded text-sm" x-text="arg"></code>
-                                    </template>
-                                </div>
-                            </div>
-                            <div x-show="selectedServerForDetails?.config?.env && Object.keys(selectedServerForDetails.config.env).length > 0">
-                                <span class="text-sm font-medium text-gray-700">Environment Variables:</span>
-                                <div class="mt-1 space-y-1">
-                                    <template x-for="[key, value] in Object.entries(selectedServerForDetails?.config?.env || {})" :key="key">
-                                        <div class="p-2 bg-white border rounded text-sm">
-                                            <span class="font-medium" x-text="key"></span>: <span x-text="value"></span>
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="p-4 border-t border-gray-200 flex justify-between">
-                <button @click="addToBundle(selectedServerForDetails)" 
-                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    Add to Bundle
-                </button>
-                <button @click="closeServerDetails()" 
-                        class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
-                    Close
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Toast notifications -->
     <div x-show="toast.show" x-transition:enter="transition ease-out duration-300"
          x-transition:enter-start="opacity-0 transform translate-y-2"

@@ -155,7 +155,28 @@ document.addEventListener('alpine:init', () => {
               category: 'development',
               tags: ['file', 'storage', 'local'],
               official: true,
-              requiredSecrets: []
+              requiredSecrets: [],
+              config: {
+                command: 'npx',
+                args: ['-y', '@modelcontextprotocol/server-filesystem', '/allowed/path'],
+                env: {}
+              }
+            },
+            {
+              id: 'slack',
+              name: 'Slack Server',
+              description: 'Interact with Slack workspaces and channels',
+              category: 'productivity', 
+              tags: ['slack', 'messaging', 'api'],
+              official: true,
+              requiredSecrets: ['SLACK_BOT_TOKEN'],
+              config: {
+                command: 'npx',
+                args: ['-y', '@modelcontextprotocol/server-slack'],
+                env: {
+                  SLACK_BOT_TOKEN: '${SLACK_BOT_TOKEN}'
+                }
+              }
             }
           ];
           console.log('Using fallback server data');
@@ -291,7 +312,8 @@ document.addEventListener('alpine:init', () => {
     // Bundle details functionality
     viewBundleDetails(bundle) {
       this.selectedBundle = bundle;
-      this.bundleDetailsView = true;
+      this.currentView = 'bundle-details';
+      this.bundleDetailsView = false; // Using page view instead of modal
     },
     
     viewBundleDetailsWithURL(bundle) {
@@ -494,11 +516,36 @@ document.addEventListener('alpine:init', () => {
       bundle.servers.forEach(serverId => {
         const server = this.servers.find(s => s.id === serverId);
         if (server && server.config) {
-          mcpServers[serverId] = {
+          // Start with base config
+          const serverConfig = {
             command: server.config.command,
             args: server.config.args,
-            env: server.config.env || {}
+            env: { ...server.config.env || {} }
           };
+          
+          // Add user's configured credentials if credentials are unlocked
+          if (Alpine.store('credentials').isUnlocked) {
+            const userCredentials = Alpine.store('credentials').get(serverId);
+            if (userCredentials) {
+              // Merge user credentials into env
+              Object.keys(userCredentials).forEach(key => {
+                if (userCredentials[key] && userCredentials[key].trim()) {
+                  serverConfig.env[key] = userCredentials[key];
+                }
+              });
+            }
+          } else {
+            // If credentials are locked, keep placeholder format for required secrets
+            if (server.requiredSecrets && server.requiredSecrets.length > 0) {
+              server.requiredSecrets.forEach(secret => {
+                if (!serverConfig.env[secret]) {
+                  serverConfig.env[secret] = `\${${secret}}`;
+                }
+              });
+            }
+          }
+          
+          mcpServers[serverId] = serverConfig;
         }
       });
       
@@ -509,17 +556,58 @@ document.addEventListener('alpine:init', () => {
         'application/json'
       );
       
-      this.showToast('Claude configuration exported');
+      const hasCredentials = Alpine.store('credentials').isUnlocked;
+      this.showToast(
+        hasCredentials ? 
+        'Claude configuration exported with your credentials' : 
+        'Claude configuration exported with placeholder variables'
+      );
     },
     
     exportCustomFormat(bundle) {
       const servers = bundle.servers.map(serverId => {
         const server = this.servers.find(s => s.id === serverId);
-        return server ? {
+        if (!server) return null;
+        
+        // Start with base config
+        const exportConfig = { ...server.config };
+        
+        // Add user's configured credentials if credentials are unlocked
+        if (Alpine.store('credentials').isUnlocked) {
+          const userCredentials = Alpine.store('credentials').get(serverId);
+          if (userCredentials && exportConfig.env) {
+            // Merge user credentials into env
+            Object.keys(userCredentials).forEach(key => {
+              if (userCredentials[key] && userCredentials[key].trim()) {
+                exportConfig.env[key] = userCredentials[key];
+              }
+            });
+          }
+        } else {
+          // If credentials are locked, keep placeholder format for required secrets
+          if (server.requiredSecrets && server.requiredSecrets.length > 0 && exportConfig.env) {
+            server.requiredSecrets.forEach(secret => {
+              if (!exportConfig.env[secret]) {
+                exportConfig.env[secret] = `\${${secret}}`;
+              }
+            });
+          }
+        }
+        
+        return {
           id: serverId,
           name: server.name,
-          config: server.config
-        } : null;
+          config: exportConfig,
+          credentials: Alpine.store('credentials').isUnlocked ? 
+            Object.keys(Alpine.store('credentials').get(serverId) || {}).map(key => ({
+              name: key,
+              required: server.requiredSecrets?.includes(key) || false
+            })) : 
+            (server.requiredSecrets || []).map(secret => ({
+              name: secret,
+              required: true
+            }))
+        };
       }).filter(Boolean);
       
       const customBundle = {
@@ -540,7 +628,12 @@ document.addEventListener('alpine:init', () => {
         'application/json'
       );
       
-      this.showToast('Custom bundle exported');
+      const hasCredentials = Alpine.store('credentials').isUnlocked;
+      this.showToast(
+        hasCredentials ? 
+        'Custom bundle exported with your credentials' : 
+        'Custom bundle exported with placeholder variables'
+      );
     },
     
     downloadFile(content, filename, mimeType) {
@@ -854,8 +947,14 @@ document.addEventListener('alpine:init', () => {
     viewBundleFromURL(bundleId) {
       const bundle = Alpine.store('bundles').items.find(b => b.id === bundleId);
       if (bundle) {
-        this.currentView = 'bundles';
-        this.viewBundleDetails(bundle);
+        this.currentView = 'bundle-details';
+        this.selectedBundle = bundle;
+        this.bundleDetailsView = false; // We're using page view now, not modal
+      } else {
+        // Bundle not found, redirect to bundles list
+        console.warn('Bundle not found:', bundleId);
+        this.showToast('Bundle not found', 'error');
+        this.navigateToView('bundles');
       }
     },
 
