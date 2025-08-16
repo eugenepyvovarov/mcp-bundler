@@ -583,6 +583,12 @@ select {
   display: none !important;
 }
 
+/* Force hide modals by default - let Alpine.js show them when needed */
+[x-show="showBundleSelectorModal"]:not([style*="display: flex"]),
+[x-show="bundleDetailsView"]:not([style*="display: flex"]) {
+  display: none;
+}
+
 /* Loading states */
 .loading {
   position: relative;
