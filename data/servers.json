@@ -1,0 +1,379 @@
+{
+  "version": "1.0",
+  "lastUpdated": "2025-01-15T10:00:00Z",
+  "servers": [
+    {
+      "id": "filesystem",
+      "name": "Filesystem Server",
+      "description": "Direct access to local file system with comprehensive file management capabilities",
+      "category": "development",
+      "tags": ["file", "storage", "local", "filesystem"],
+      "official": true,
+      "installation": {
+        "type": "npx",
+        "package": "@modelcontextprotocol/server-filesystem"
+      },
+      "config": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/allowed/path"],
+        "env": {}
+      },
+      "requiredSecrets": [],
+      "documentation": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+      "version": "1.0.0"
+    },
+    {
+      "id": "slack",
+      "name": "Slack Server",
+      "description": "Send messages and interact with Slack workspaces",
+      "category": "productivity",
+      "tags": ["communication", "messaging", "slack", "team"],
+      "official": true,
+      "installation": {
+        "type": "npx",
+        "package": "@modelcontextprotocol/server-slack"
+      },
+      "config": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-slack"],
+        "env": {
+          "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}"
+        }
+      },
+      "requiredSecrets": ["SLACK_BOT_TOKEN"],
+      "documentation": "https://github.com/modelcontextprotocol/servers/tree/main/src/slack",
+      "version": "1.0.0"
+    },
+    {
+      "id": "github",
+      "name": "GitHub MCP Server",
+      "description": "Interact with GitHub repositories, issues, and PRs",
+      "category": "development",
+      "tags": ["git", "vcs", "collaboration", "repository", "github"],
+      "official": true,
+      "installation": {
+        "type": "npx",
+        "package": "@modelcontextprotocol/server-github"
+      },
+      "config": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": {
+          "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+        }
+      },
+      "requiredSecrets": ["GITHUB_TOKEN"],
+      "documentation": "https://github.com/modelcontextprotocol/servers/tree/main/src/github",
+      "version": "1.0.0"
+    },
+    {
+      "id": "sqlite",
+      "name": "SQLite Server",
+      "description": "Work with SQLite databases locally",
+      "category": "database",
+      "tags": ["database", "sql", "sqlite", "local"],
+      "official": true,
+      "installation": {
+        "type": "npx",
+        "package": "@modelcontextprotocol/server-sqlite"
+      },
+      "config": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "${DB_PATH}"],
+        "env": {}
+      },
+      "requiredSecrets": [],
+      "documentation": "https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite",
+      "version": "1.0.0"
+    },
+    {
+      "id": "postgres",
+      "name": "PostgreSQL Server",
+      "description": "Connect to PostgreSQL databases and execute queries",
+      "category": "database",
+      "tags": ["database", "sql", "postgresql", "queries"],
+      "official": true,
+      "installation": {
+        "type": "npx",
+        "package": "@modelcontextprotocol/server-postgres"
+      },
+      "config": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-postgres"],
+        "env": {
+          "POSTGRES_CONNECTION_STRING": "${POSTGRES_URL}"
+        }
+      },
+      "requiredSecrets": ["POSTGRES_URL"],
+      "documentation": "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres",
+      "version": "1.0.0"
+    },
+    {
+      "id": "playwright",
+      "name": "Playwright MCP Server",
+      "description": "Web automation and browser control using Playwright",
+      "category": "development",
+      "tags": ["web-automation", "browser", "playwright", "testing"],
+      "official": false,
+      "installation": {
+        "type": "npm",
+        "package": "playwright-mcp-server"
+      },
+      "config": {
+        "command": "node",
+        "args": ["playwright-mcp-server"],
+        "env": {}
+      },
+      "requiredSecrets": [],
+      "documentation": "https://github.com/executeautomation/mcp-playwright",
+      "version": "0.1.0"
+    },
+    {
+      "id": "google-drive",
+      "name": "Google Drive Server",
+      "description": "Access Google Drive files and folders",
+      "category": "cloud",
+      "tags": ["storage", "cloud", "google", "drive", "files"],
+      "official": true,
+      "installation": {
+        "type": "npx",
+        "package": "@modelcontextprotocol/server-gdrive"
+      },
+      "config": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+        "env": {
+          "GOOGLE_DRIVE_CREDENTIALS": "${GOOGLE_CREDENTIALS}"
+        }
+      },
+      "requiredSecrets": ["GOOGLE_CREDENTIALS"],
+      "documentation": "https://github.com/modelcontextprotocol/servers/tree/main/src/gdrive",
+      "version": "1.0.0"
+    },
+    {
+      "id": "memory",
+      "name": "Memory Server",
+      "description": "Persistent memory storage for conversations",
+      "category": "ai",
+      "tags": ["memory", "storage", "ai", "context"],
+      "official": true,
+      "installation": {
+        "type": "npx",
+        "package": "@modelcontextprotocol/server-memory"
+      },
+      "config": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-memory"],
+        "env": {}
+      },
+      "requiredSecrets": [],
+      "documentation": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+      "version": "1.0.0"
+    },
+    {
+      "id": "brave-search",
+      "name": "Brave Search MCP Server",
+      "description": "Search the web using Brave Search API",
+      "category": "api",
+      "tags": ["search", "web", "brave", "internet"],
+      "official": false,
+      "installation": {
+        "type": "npm",
+        "package": "brave-search-mcp"
+      },
+      "config": {
+        "command": "node",
+        "args": ["brave-search-mcp"],
+        "env": {
+          "BRAVE_SEARCH_API_KEY": "${BRAVE_API_KEY}"
+        }
+      },
+      "requiredSecrets": ["BRAVE_API_KEY"],
+      "documentation": "https://github.com/pskill9/brave-search",
+      "version": "0.1.0"
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare MCP Server",
+      "description": "Manage Cloudflare services like Workers and KV storage",
+      "category": "cloud",
+      "tags": ["cloudflare", "workers", "kv", "cdn", "serverless"],
+      "official": false,
+      "installation": {
+        "type": "npm",
+        "package": "@cloudflare/mcp-server-cloudflare"
+      },
+      "config": {
+        "command": "node",
+        "args": ["@cloudflare/mcp-server-cloudflare"],
+        "env": {
+          "CLOUDFLARE_API_TOKEN": "${CLOUDFLARE_TOKEN}"
+        }
+      },
+      "requiredSecrets": ["CLOUDFLARE_TOKEN"],
+      "documentation": "https://github.com/cloudflare/mcp-server-cloudflare",
+      "version": "0.4.0"
+    },
+    {
+      "id": "elasticsearch",
+      "name": "Elasticsearch MCP Server",
+      "description": "Query and interact with Elasticsearch clusters",
+      "category": "database",
+      "tags": ["search", "elasticsearch", "analytics", "database"],
+      "official": false,
+      "installation": {
+        "type": "npm",
+        "package": "elasticsearch-mcp-server"
+      },
+      "config": {
+        "command": "node",
+        "args": ["elasticsearch-mcp-server"],
+        "env": {
+          "ELASTICSEARCH_URL": "${ELASTICSEARCH_URL}"
+        }
+      },
+      "requiredSecrets": ["ELASTICSEARCH_URL"],
+      "documentation": "https://github.com/cr7258/elasticsearch-mcp-server",
+      "version": "0.1.0"
+    },
+    {
+      "id": "aws-kb-retrieval",
+      "name": "AWS Knowledge Base Retrieval",
+      "description": "Retrieve information from AWS Knowledge Bases",
+      "category": "ai",
+      "tags": ["aws", "knowledge-base", "retrieval", "ai"],
+      "official": false,
+      "installation": {
+        "type": "npm",
+        "package": "aws-kb-retrieval-mcp"
+      },
+      "config": {
+        "command": "node",
+        "args": ["aws-kb-retrieval-mcp"],
+        "env": {
+          "AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY}",
+          "AWS_SECRET_ACCESS_KEY": "${AWS_SECRET_KEY}",
+          "AWS_REGION": "${AWS_REGION}"
+        }
+      },
+      "requiredSecrets": ["AWS_ACCESS_KEY", "AWS_SECRET_KEY", "AWS_REGION"],
+      "documentation": "https://github.com/rishihk/aws-kb-retrieval-mcp",
+      "version": "0.1.0"
+    },
+    {
+      "id": "docker",
+      "name": "Docker MCP Server",
+      "description": "Manage Docker containers, images, and networks",
+      "category": "development",
+      "tags": ["docker", "containers", "devops", "deployment"],
+      "official": false,
+      "installation": {
+        "type": "npm",
+        "package": "docker-mcp-server"
+      },
+      "config": {
+        "command": "node",
+        "args": ["docker-mcp-server"],
+        "env": {}
+      },
+      "requiredSecrets": [],
+      "documentation": "https://github.com/soheil-mp/docker-mcp-server",
+      "version": "0.1.0"
+    },
+    {
+      "id": "gitlab",
+      "name": "GitLab MCP Server",
+      "description": "Interact with GitLab repositories and projects",
+      "category": "development",
+      "tags": ["gitlab", "git", "vcs", "repository", "ci-cd"],
+      "official": false,
+      "installation": {
+        "type": "npm",
+        "package": "gitlab-mcp-server"
+      },
+      "config": {
+        "command": "node",
+        "args": ["gitlab-mcp-server"],
+        "env": {
+          "GITLAB_TOKEN": "${GITLAB_TOKEN}",
+          "GITLAB_URL": "${GITLAB_URL}"
+        }
+      },
+      "requiredSecrets": ["GITLAB_TOKEN", "GITLAB_URL"],
+      "documentation": "https://github.com/rishihk/gitlab-mcp-server",
+      "version": "0.1.0"
+    },
+    {
+      "id": "obsidian",
+      "name": "Obsidian Vault MCP Server",
+      "description": "Read and search Obsidian vault files",
+      "category": "productivity",
+      "tags": ["obsidian", "notes", "knowledge", "vault"],
+      "official": false,
+      "installation": {
+        "type": "npm",
+        "package": "obsidian-mcp-server"
+      },
+      "config": {
+        "command": "node",
+        "args": ["obsidian-mcp-server"],
+        "env": {
+          "OBSIDIAN_VAULT_PATH": "${VAULT_PATH}"
+        }
+      },
+      "requiredSecrets": [],
+      "documentation": "https://github.com/calclavia/mcp-obsidian",
+      "version": "0.1.0"
+    },
+    {
+      "id": "firecrawl",
+      "name": "Firecrawl MCP Server",
+      "description": "Powerful web scraping with JavaScript rendering, batch processing, and search capabilities. Official Firecrawl integration for web content extraction.",
+      "category": "api",
+      "tags": ["web-scraping", "firecrawl", "javascript", "pdf", "search", "crawling"],
+      "official": true,
+      "installation": {
+        "type": "npx",
+        "package": "firecrawl-mcp"
+      },
+      "config": {
+        "command": "npx",
+        "args": ["-y", "firecrawl-mcp"],
+        "env": {
+          "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}"
+        }
+      },
+      "requiredSecrets": ["FIRECRAWL_API_KEY"],
+      "documentation": "https://github.com/mendableai/firecrawl-mcp-server",
+      "version": "1.0.0"
+    },
+    {
+      "id": "timeserver",
+      "name": "MCP Timeserver",
+      "description": "A simple MCP server that exposes datetime information to agentic systems. Provides timezone-aware datetime access via URI scheme and local time tools.",
+      "category": "api",
+      "tags": ["time", "datetime", "timezone", "utilities", "system"],
+      "official": false,
+      "installation": {
+        "type": "uvx",
+        "package": "MCP-timeserver"
+      },
+      "config": {
+        "command": "uvx",
+        "args": ["MCP-timeserver"],
+        "env": {}
+      },
+      "requiredSecrets": [],
+      "documentation": "https://github.com/SecretiveShell/MCP-timeserver",
+      "version": "1.0.0"
+    }
+  ],
+  "categories": {
+    "development": "Development Tools",
+    "database": "Databases",
+    "productivity": "Productivity Apps",
+    "ai": "AI/ML Tools",
+    "cloud": "Cloud Services",
+    "api": "API Integrations"
+  }
+}
