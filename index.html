@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#1a202c">
     
     <!-- Proper cache control for production -->
@@ -90,7 +90,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="MCP Cat">
+    <meta name="apple-mobile-web-app-title" content="MCP Bundler">
     
     <!-- PWA Links -->
     <link rel="manifest" href="/manifest.json">
@@ -99,7 +99,7 @@
     <!-- Preload critical resources -->
     <link rel="preload" href="/data/servers.json" as="fetch" crossorigin>
     
-    <title>MCP Server Catalogue</title>
+    <title>MCP Bundler</title>
     
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -107,7 +107,7 @@
     <!-- Resource loading with proper cache versioning -->
     <script>
     // Use cache busting only in development
-    const version = '1.0.0'; // Update this when deploying new versions
+    const version = '1.0.1'; // Update this when deploying new versions
     const cacheBust = window.isDevelopment ? Date.now() : version;
     
     if (window.isDevelopment) {
@@ -125,6 +125,31 @@
     <!-- Only hide elements before Alpine.js loads -->
     <style>
         [x-cloak] { display: none !important; }
+        
+        /* Mobile navigation icon styling */
+        .nav-icon-active {
+            filter: brightness(0) saturate(100%) invert(36%) sepia(77%) saturate(2398%) hue-rotate(213deg) brightness(95%) contrast(101%);
+        }
+        
+        .nav-icon-inactive {
+            filter: opacity(60%);
+        }
+        
+        /* PWA Safe area support */
+        @supports (padding-top: env(safe-area-inset-top)) {
+            .safe-area-top {
+                padding-top: env(safe-area-inset-top);
+            }
+            .safe-area-bottom {
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+            .safe-area-left {
+                padding-left: env(safe-area-inset-left);
+            }
+            .safe-area-right {
+                padding-right: env(safe-area-inset-right);
+            }
+        }
     </style>
     
     <!-- Fix modal x-cloak handling after Alpine.js loads -->
@@ -148,12 +173,12 @@
 </head>
 <body class="bg-gray-50 text-gray-900 overflow-x-hidden">
     <!-- Main App Container -->
-    <div x-data="app" x-cloak class="min-h-screen pb-20 md:pb-0">
+    <div x-data="app" x-cloak class="min-h-screen pb-24 md:pb-0">
         
         <!-- Mobile Header -->
-        <header class="sticky top-0 z-40 bg-white border-b border-gray-200 md:hidden">
-            <div class="px-4 py-3 flex items-center justify-between">
-                <h1 class="text-lg font-semibold">MCP Catalogue</h1>
+        <header class="sticky top-0 z-40 bg-white border-b border-gray-200 md:hidden safe-area-top">
+            <div class="px-4 py-3 flex items-center justify-between safe-area-left safe-area-right">
+                <h1 class="text-lg font-semibold">MCP Bundler</h1>
                 <button @click="installApp()" x-show="installPrompt" 
                         class="text-blue-600 text-sm font-medium"
                         title="Install app for offline use">
@@ -163,7 +188,7 @@
         </header>
         
         <!-- Main Content -->
-        <main class="container mx-auto px-4 py-6 max-w-4xl">
+        <main class="container mx-auto px-4 py-6 max-w-4xl md:ml-64 safe-area-left safe-area-right">
             
             <!-- Server Catalogue View -->
             <div x-show="currentView === 'catalogue'">
@@ -810,7 +835,7 @@
                     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                         <h3 class="font-semibold text-gray-900 mb-3">About</h3>
                         <div class="space-y-2 text-sm text-gray-600">
-                            <p><strong>MCP Server Catalogue</strong></p>
+                            <p><strong>MCP Bundler</strong></p>
                             <p>Version 1.0.0</p>
                             <p>A Progressive Web App for managing MCP server bundles</p>
                         </div>
@@ -1260,31 +1285,39 @@
         </main>
         
         <!-- Bottom Navigation (Mobile) -->
-        <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 md:hidden">
+        <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 md:hidden z-50 safe-area-bottom safe-area-left safe-area-right">
             <div class="grid grid-cols-4 h-16">
                 <button @click="navigateToView('catalogue')" 
-                        :class="currentView === 'catalogue' ? 'text-blue-600' : 'text-gray-400'"
-                        class="flex flex-col items-center justify-center">
-                    <img src="./icons/folder.svg" class="w-4 h-4 mb-1" alt="Catalogue">
-                    <span class="text-xs">Servers</span>
+                        :class="currentView === 'catalogue' ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'"
+                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-colors">
+                    <img src="./icons/folder.svg" 
+                         :class="currentView === 'catalogue' ? 'nav-icon-active' : 'nav-icon-inactive'"
+                         class="w-4 h-4 mb-1" alt="Catalogue">
+                    <span class="text-xs font-medium">Servers</span>
                 </button>
                 <button @click="navigateToView('connections')"
-                        :class="currentView === 'connections' ? 'text-blue-600' : 'text-gray-400'"
-                        class="flex flex-col items-center justify-center">
-                    <img src="./icons/key.svg" class="w-4 h-4 mb-1" alt="Connections">
-                    <span class="text-xs">Connections</span>
+                        :class="currentView === 'connections' ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'"
+                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-colors">
+                    <img src="./icons/key.svg" 
+                         :class="currentView === 'connections' ? 'nav-icon-active' : 'nav-icon-inactive'"
+                         class="w-4 h-4 mb-1" alt="Connections">
+                    <span class="text-xs font-medium">Connections</span>
                 </button>
                 <button @click="navigateToView('bundles')"
-                        :class="currentView === 'bundles' ? 'text-blue-600' : 'text-gray-400'"
-                        class="flex flex-col items-center justify-center">
-                    <img src="./icons/package.svg" class="w-4 h-4 mb-1" alt="Bundles">
-                    <span class="text-xs">Bundles</span>
+                        :class="(currentView === 'bundles' || currentView === 'bundle-details') ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'"
+                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-colors">
+                    <img src="./icons/package.svg" 
+                         :class="(currentView === 'bundles' || currentView === 'bundle-details') ? 'nav-icon-active' : 'nav-icon-inactive'"
+                         class="w-4 h-4 mb-1" alt="Bundles">
+                    <span class="text-xs font-medium">Bundles</span>
                 </button>
                 <button @click="navigateToView('settings')"
-                        :class="currentView === 'settings' ? 'text-blue-600' : 'text-gray-400'"
-                        class="flex flex-col items-center justify-center">
-                    <img src="./icons/settings.svg" class="w-4 h-4 mb-1" alt="Settings">
-                    <span class="text-xs">Settings</span>
+                        :class="currentView === 'settings' ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'"
+                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-colors">
+                    <img src="./icons/settings.svg" 
+                         :class="currentView === 'settings' ? 'nav-icon-active' : 'nav-icon-inactive'"
+                         class="w-4 h-4 mb-1" alt="Settings">
+                    <span class="text-xs font-medium">Settings</span>
                 </button>
             </div>
         </nav>
@@ -1292,7 +1325,7 @@
         <!-- Desktop Sidebar -->
         <aside class="hidden md:block fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200">
             <div class="p-6">
-                <h1 class="text-xl font-bold text-gray-900 mb-8">MCP Catalogue</h1>
+                <h1 class="text-xl font-bold text-gray-900 mb-8">MCP Bundler</h1>
                 <nav class="space-y-2">
                     <button @click="navigateToView('catalogue')" 
                             :class="currentView === 'catalogue' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'"
