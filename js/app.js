@@ -28,6 +28,16 @@ document.addEventListener('alpine:init', () => {
     showServerDetailsModal: false,
     selectedServerForDetails: null,
     
+    // Connection management state
+    showCreateConnectionModal: false,
+    newConnectionName: '',
+    newConnectionServerId: '',
+    newConnectionCredentials: {},
+    
+    // Export management state
+    showExportPreview: false,
+    exportFormat: 'claude.json',
+    
     // Toast notification state
     toast: {
       show: false,
@@ -346,6 +356,134 @@ document.addEventListener('alpine:init', () => {
       }
     },
     
+    // Connection management methods
+    clearConnectionForm() {
+      this.newConnectionName = '';
+      this.newConnectionServerId = '';
+      this.newConnectionCredentials = {};
+    },
+    
+    createConnection() {
+      if (!this.newConnectionName?.trim() || !this.newConnectionServerId) {
+        this.showToast('Please fill in all required fields', 'error');
+        return;
+      }
+      
+      try {
+        const connection = Alpine.store('connections').create(
+          this.newConnectionName.trim(),
+          this.newConnectionServerId,
+          this.newConnectionCredentials
+        );
+        
+        this.showCreateConnectionModal = false;
+        this.clearConnectionForm();
+        this.showToast(`Connection "${connection.name}" created successfully!`);
+        
+      } catch (error) {
+        console.error('Failed to create connection:', error);
+        this.showToast('Failed to create connection', 'error');
+      }
+    },
+    
+    editConnection(connection) {
+      // For now, just show a simple prompt to edit credentials
+      // TODO: Create a proper edit modal
+      const server = this.servers.find(s => s.id === connection.serverId);
+      if (!server || !server.requiredSecrets) {
+        this.showToast('No credentials to configure', 'error');
+        return;
+      }
+      
+      const newCredentials = { ...connection.credentials };
+      let hasChanges = false;
+      
+      for (const secret of server.requiredSecrets) {
+        const currentValue = newCredentials[secret] || '';
+        const newValue = prompt(`Enter ${secret} for ${connection.name}:`, currentValue);
+        
+        if (newValue !== null && newValue !== currentValue) {
+          newCredentials[secret] = newValue;
+          hasChanges = true;
+        }
+      }
+      
+      if (hasChanges) {
+        try {
+          Alpine.store('connections').updateCredentials(connection.id, newCredentials);
+          this.showToast(`Credentials updated for ${connection.name}`);
+        } catch (error) {
+          console.error('Failed to update credentials:', error);
+          this.showToast('Failed to update credentials', 'error');
+        }
+      }
+    },
+    
+    deleteConnection(connection) {
+      if (!confirm(`Are you sure you want to delete "${connection.name}"?`)) return;
+      
+      try {
+        Alpine.store('connections').delete(connection.id);
+        this.showToast(`Connection "${connection.name}" deleted`);
+      } catch (error) {
+        console.error('Failed to delete connection:', error);
+        this.showToast(error.message, 'error');
+      }
+    },
+    
+    // Server-to-Bundle workflow methods  
+    showBundleSelector(server) {
+      this.selectedServer = server;
+      this.showBundleSelectorModal = true;
+    },
+    
+    addServerToBundle(bundleId, server) {
+      try {
+        Alpine.store('bundles').addServer(bundleId, server.id);
+        this.showBundleSelectorModal = false;
+        this.selectedServer = null;
+        this.showToast(`${server.name} added to bundle`);
+      } catch (error) {
+        console.error('Failed to add server to bundle:', error);
+        this.showToast('Failed to add server to bundle', 'error');
+      }
+    },
+    
+    createBundleAndAddServer(server) {
+      this.showBundleSelectorModal = false;
+      this.showCreateBundleModal = true;
+      this.selectedServer = server;
+      this.newBundleName = '';
+      this.newBundleDescription = '';
+    },
+    
+    // Update createBundleWithModal to handle servers
+    createBundleWithModal() {
+      if (!this.newBundleName?.trim()) return;
+      
+      try {
+        const bundle = Alpine.store('bundles').create(this.newBundleName.trim(), this.newBundleDescription.trim());
+        
+        // Add the server to the new bundle if selected
+        if (this.selectedServer) {
+          Alpine.store('bundles').addServer(bundle.id, this.selectedServer.id);
+        }
+        
+        // Close modal and show success
+        this.showCreateBundleModal = false;
+        this.showToast(`Bundle "${bundle.name}" created successfully!`);
+        
+        // Clear form
+        this.newBundleName = '';
+        this.newBundleDescription = '';
+        this.selectedServer = null;
+        
+      } catch (error) {
+        console.error('Failed to create bundle:', error);
+        this.showToast('Failed to create bundle', 'error');
+      }
+    },
+    
     // Bundle details functionality
     viewBundleDetails(bundle) {
       this.selectedBundle = bundle;
@@ -404,9 +542,39 @@ document.addEventListener('alpine:init', () => {
     },
     
     getBundleServers(bundle) {
-      return bundle.servers.map(serverId => 
+      return (bundle.servers || []).map(serverId => 
         this.servers.find(s => s.id === serverId)
       ).filter(Boolean);
+    },
+    
+    // Connection attachment methods for bundle details
+    attachConnectionToServer(bundleId, serverId, connectionId) {
+      try {
+        Alpine.store('bundles').attachConnection(bundleId, serverId, connectionId);
+        this.showToast('Connection attached successfully');
+      } catch (error) {
+        console.error('Failed to attach connection:', error);
+        this.showToast('Failed to attach connection', 'error');
+      }
+    },
+    
+    detachConnectionFromServer(bundleId, serverId) {
+      try {
+        Alpine.store('bundles').detachConnection(bundleId, serverId);
+        this.showToast('Connection detached');
+      } catch (error) {
+        console.error('Failed to detach connection:', error);
+        this.showToast('Failed to detach connection', 'error');
+      }
+    },
+    
+    getServerConnection(bundleId, serverId) {
+      return Alpine.store('bundles').getServerConnection(bundleId, serverId);
+    },
+    
+    getServerConnections(serverId) {
+      if (!serverId) return [];
+      return Alpine.store('connections').getByServerId(serverId);
     },
     
     removeFromBundle(serverId) {
@@ -547,8 +715,25 @@ document.addEventListener('alpine:init', () => {
       }
     },
     
+    exportBundleWithFormat(bundle, format) {
+      try {
+        if (format === 'claude.json') {
+          this.exportClaudeFormat(bundle);
+        } else {
+          this.exportCustomFormat(bundle);
+        }
+        
+        this.showExportPreview = false;
+        
+      } catch (error) {
+        console.error('Failed to export bundle:', error);
+        this.showToast('Failed to export bundle', 'error');
+      }
+    },
+    
     exportClaudeFormat(bundle) {
       const mcpServers = {};
+      let hasRealCredentials = false;
       
       bundle.servers.forEach(serverId => {
         const server = this.servers.find(s => s.id === serverId);
@@ -560,19 +745,19 @@ document.addEventListener('alpine:init', () => {
             env: { ...server.config.env || {} }
           };
           
-          // Add user's configured credentials if credentials are unlocked
-          if (Alpine.store('credentials').isUnlocked) {
-            const userCredentials = Alpine.store('credentials').get(serverId);
-            if (userCredentials) {
-              // Merge user credentials into env
-              Object.keys(userCredentials).forEach(key => {
-                if (userCredentials[key] && userCredentials[key].trim()) {
-                  serverConfig.env[key] = userCredentials[key];
-                }
-              });
-            }
+          // Check if this server has an attached connection
+          const attachedConnection = Alpine.store('bundles').getServerConnection(bundle.id, serverId);
+          
+          if (attachedConnection && attachedConnection.credentials) {
+            // Use credentials from attached connection
+            Object.keys(attachedConnection.credentials).forEach(key => {
+              if (attachedConnection.credentials[key] && attachedConnection.credentials[key].trim()) {
+                serverConfig.env[key] = attachedConnection.credentials[key];
+                hasRealCredentials = true;
+              }
+            });
           } else {
-            // If credentials are locked, keep placeholder format for required secrets
+            // No attached connection - use placeholder format for required secrets
             if (server.requiredSecrets && server.requiredSecrets.length > 0) {
               server.requiredSecrets.forEach(secret => {
                 if (!serverConfig.env[secret]) {
@@ -593,15 +778,16 @@ document.addEventListener('alpine:init', () => {
         'application/json'
       );
       
-      const hasCredentials = Alpine.store('credentials').isUnlocked;
       this.showToast(
-        hasCredentials ? 
+        hasRealCredentials ? 
         'Claude configuration exported with your credentials' : 
         'Claude configuration exported with placeholder variables'
       );
     },
     
     exportCustomFormat(bundle) {
+      let hasRealCredentials = false;
+      
       const servers = bundle.servers.map(serverId => {
         const server = this.servers.find(s => s.id === serverId);
         if (!server) return null;
@@ -609,19 +795,19 @@ document.addEventListener('alpine:init', () => {
         // Start with base config
         const exportConfig = { ...server.config };
         
-        // Add user's configured credentials if credentials are unlocked
-        if (Alpine.store('credentials').isUnlocked) {
-          const userCredentials = Alpine.store('credentials').get(serverId);
-          if (userCredentials && exportConfig.env) {
-            // Merge user credentials into env
-            Object.keys(userCredentials).forEach(key => {
-              if (userCredentials[key] && userCredentials[key].trim()) {
-                exportConfig.env[key] = userCredentials[key];
-              }
-            });
-          }
+        // Check if this server has an attached connection
+        const attachedConnection = Alpine.store('bundles').getServerConnection(bundle.id, serverId);
+        
+        if (attachedConnection && attachedConnection.credentials && exportConfig.env) {
+          // Use credentials from attached connection
+          Object.keys(attachedConnection.credentials).forEach(key => {
+            if (attachedConnection.credentials[key] && attachedConnection.credentials[key].trim()) {
+              exportConfig.env[key] = attachedConnection.credentials[key];
+              hasRealCredentials = true;
+            }
+          });
         } else {
-          // If credentials are locked, keep placeholder format for required secrets
+          // No attached connection - use placeholder format for required secrets
           if (server.requiredSecrets && server.requiredSecrets.length > 0 && exportConfig.env) {
             server.requiredSecrets.forEach(secret => {
               if (!exportConfig.env[secret]) {
@@ -631,19 +817,26 @@ document.addEventListener('alpine:init', () => {
           }
         }
         
+        // Determine credentials info for export metadata
+        const credentialsInfo = attachedConnection && attachedConnection.credentials ? 
+          Object.keys(attachedConnection.credentials).map(key => ({
+            name: key,
+            required: server.requiredSecrets?.includes(key) || false,
+            hasValue: !!(attachedConnection.credentials[key] && attachedConnection.credentials[key].trim())
+          })) : 
+          (server.requiredSecrets || []).map(secret => ({
+            name: secret,
+            required: true,
+            hasValue: false
+          }));
+        
         return {
           id: serverId,
           name: server.name,
           config: exportConfig,
-          credentials: Alpine.store('credentials').isUnlocked ? 
-            Object.keys(Alpine.store('credentials').get(serverId) || {}).map(key => ({
-              name: key,
-              required: server.requiredSecrets?.includes(key) || false
-            })) : 
-            (server.requiredSecrets || []).map(secret => ({
-              name: secret,
-              required: true
-            }))
+          credentials: credentialsInfo,
+          connectionId: attachedConnection ? attachedConnection.id : null,
+          connectionName: attachedConnection ? attachedConnection.name : null
         };
       }).filter(Boolean);
       
@@ -655,7 +848,8 @@ document.addEventListener('alpine:init', () => {
           description: bundle.description,
           version: '1.0.0',
           servers: servers,
-          exported: new Date().toISOString()
+          exported: new Date().toISOString(),
+          hasCredentials: hasRealCredentials
         }
       };
       
@@ -665,9 +859,8 @@ document.addEventListener('alpine:init', () => {
         'application/json'
       );
       
-      const hasCredentials = Alpine.store('credentials').isUnlocked;
       this.showToast(
-        hasCredentials ? 
+        hasRealCredentials ? 
         'Custom bundle exported with your credentials' : 
         'Custom bundle exported with placeholder variables'
       );

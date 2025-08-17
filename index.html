@@ -351,6 +351,100 @@
                 </div>
             </div>
             
+            <!-- Connections View -->
+            <div x-show="currentView === 'connections'">
+                <div class="mb-6">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h2 class="text-2xl font-bold mb-2">My Connections</h2>
+                            <p class="text-gray-600">Manage your MCP server connections and credentials</p>
+                        </div>
+                        <button @click="showCreateConnectionModal = true" 
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-flex items-center">
+                            <img src="./icons/add.svg" class="w-4 h-4 mr-2" alt="Add" style="filter: brightness(0) invert(1);">
+                            New Connection
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Connections List -->
+                <div class="space-y-4">
+                    <template x-for="connection in Alpine.store('connections').items" :key="connection.id">
+                        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                            <div class="flex justify-between items-start">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <h3 class="font-semibold text-gray-900" x-text="connection.name"></h3>
+                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                            <img src="./icons/server.svg" class="w-3 h-3 mr-1" alt="Server">
+                                            <span x-text="servers.find(s => s.id === connection.serverId)?.name || connection.serverId"></span>
+                                            <span class="ml-1 text-gray-500" x-text="`(${servers.find(s => s.id === connection.serverId)?.requiredSecrets?.length || 0} vars)`"></span>
+                                        </span>
+                                        <span :class="{
+                                            'bg-green-100 text-green-700': Alpine.store('connections').hasRequiredCredentials(connection.id, servers),
+                                            'bg-yellow-100 text-yellow-700': !Alpine.store('connections').hasRequiredCredentials(connection.id, servers)
+                                        }" class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full gap-1">
+                                            <img :src="Alpine.store('connections').hasRequiredCredentials(connection.id, servers) ? './icons/success.svg' : './icons/warning.svg'" 
+                                                 class="w-3 h-3" alt="Status">
+                                            <span x-text="Alpine.store('connections').hasRequiredCredentials(connection.id, servers) ? 'Ready' : 'Setup Required'"></span>
+                                        </span>
+                                    </div>
+                                    
+                                    <!-- Required Secrets -->
+                                    <template x-for="server in servers.filter(s => s.id === connection.serverId)" :key="server.id">
+                                        <div class="mt-3" x-show="server.requiredSecrets && server.requiredSecrets.length > 0">
+                                            <h4 class="text-sm font-medium text-gray-700 mb-2">Required Secrets</h4>
+                                            <div class="flex flex-wrap gap-2">
+                                                <template x-for="secret in server.requiredSecrets" :key="secret">
+                                                    <span :class="{
+                                                        'bg-green-50 text-green-700 border-green-200': connection.credentials && connection.credentials[secret],
+                                                        'bg-yellow-50 text-yellow-700 border-yellow-200': !connection.credentials || !connection.credentials[secret]
+                                                    }" class="inline-flex items-center px-2 py-1 text-xs border rounded">
+                                                        <img :src="(connection.credentials && connection.credentials[secret]) ? './icons/success.svg' : './icons/warning.svg'" 
+                                                             class="w-3 h-3 mr-1" alt="Status">
+                                                        <span x-text="secret"></span>
+                                                    </span>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    
+                                    <div class="mt-2 text-xs text-gray-500">
+                                        Created <span x-text="formatDate(connection.created)"></span>
+                                        • Updated <span x-text="formatDate(connection.updated)"></span>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex items-center gap-2">
+                                    <button @click="editConnection(connection)" 
+                                            class="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                                            title="Configure credentials">
+                                        <img src="./icons/edit.svg" class="w-4 h-4" alt="Edit">
+                                    </button>
+                                    <button @click="deleteConnection(connection)" 
+                                            class="px-3 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                                            title="Delete connection">
+                                        <img src="./icons/delete.svg" class="w-4 h-4" alt="Delete">
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <!-- Empty State -->
+                    <div x-show="Alpine.store('connections').items.length === 0" class="text-center py-12">
+                        <img src="./icons/key.svg" class="w-16 h-16 mx-auto text-gray-400 mb-4" alt="No connections">
+                        <h3 class="text-lg font-medium text-gray-900 mb-2">No connections yet</h3>
+                        <p class="text-gray-500 mb-4">Create your first MCP server connection to get started</p>
+                        <button @click="showCreateConnectionModal = true" 
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-flex items-center">
+                            <img src="./icons/add.svg" class="w-4 h-4 mr-2" alt="Add" style="filter: brightness(0) invert(1);">
+                            Create Connection
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Bundle Details Page View -->
             <div x-show="currentView === 'bundle-details'" class="max-w-6xl mx-auto">
                 <!-- Header -->
@@ -374,7 +468,7 @@
                                 <img src="./icons/share.svg" class="w-4 h-4 mr-2" alt="Share">
                                 Share
                             </button>
-                            <button @click="exportBundle(selectedBundle)" 
+                            <button @click="showExportPreview = true" 
                                     class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
                                     title="Export bundle configuration">
                                 <img src="./icons/download.svg" class="w-4 h-4 mr-2" alt="Export">
@@ -454,71 +548,129 @@
                                     </button>
                                 </div>
                                 
-                                <!-- Credentials Section -->
+                                <!-- Connection Management Section -->
                                 <div x-show="server.requiredSecrets && server.requiredSecrets.length > 0" class="bg-gray-50 rounded-lg p-4">
-                                    <div class="flex items-center justify-between mb-3">
-                                        <h5 class="font-medium text-gray-900">Required Credentials</h5>
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h5 class="font-medium text-gray-900">Connection Configuration</h5>
                                         <span class="text-xs px-2 py-1 rounded-full flex items-center gap-1"
-                                              :class="getCredentialStatus(server.id) === 'complete' ? 'bg-green-100 text-green-800' : 
-                                                     getCredentialStatus(server.id) === 'incomplete' ? 'bg-yellow-100 text-yellow-800' : 
-                                                     getCredentialStatus(server.id) === 'locked' ? 'bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-800'">
-                                            <span x-show="getCredentialStatus(server.id) === 'complete'" class="flex items-center gap-1">
-                                                <img src="./icons/success.svg" class="w-3 h-3" alt="Complete">
-                                                Complete
+                                              :class="getServerConnection(selectedBundle.id, server.id) ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'">
+                                            <span x-show="getServerConnection(selectedBundle.id, server.id)" class="flex items-center gap-1">
+                                                <img src="./icons/success.svg" class="w-3 h-3" alt="Connected">
+                                                Connected
                                             </span>
-                                            <span x-show="getCredentialStatus(server.id) === 'incomplete'" class="flex items-center gap-1">
-                                                <img src="./icons/warning.svg" class="w-3 h-3" alt="Incomplete">
-                                                Incomplete
-                                            </span>
-                                            <span x-show="getCredentialStatus(server.id) === 'locked'" class="flex items-center gap-1">
-                                                <img src="./icons/key.svg" class="w-3 h-3" alt="Locked">
-                                                Locked
-                                            </span>
-                                            <span x-show="getCredentialStatus(server.id) === 'none-required'" class="flex items-center gap-1">
-                                                <img src="./icons/success.svg" class="w-3 h-3" alt="No credentials needed">
-                                                None Required
+                                            <span x-show="!getServerConnection(selectedBundle.id, server.id)" class="flex items-center gap-1">
+                                                <img src="./icons/warning.svg" class="w-3 h-3" alt="Not Connected">
+                                                Not Connected
                                             </span>
                                         </span>
                                     </div>
                                     
+                                    <!-- Connection Selection/Display -->
                                     <div class="space-y-3">
-                                        <template x-for="secret in server.requiredSecrets || []" :key="secret">
-                                            <div class="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
-                                                <div class="flex-1">
-                                                    <div class="font-medium text-sm" x-text="secret"></div>
-                                                    <div class="text-xs text-gray-500">Environment variable or API key</div>
-                                                </div>
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-xs"
-                                                          :class="Alpine.store('credentials').isUnlocked && Alpine.store('credentials').get(server.id)?.[secret] ? 'text-green-600' : 'text-gray-400'"
-                                                          x-text="Alpine.store('credentials').isUnlocked && Alpine.store('credentials').get(server.id)?.[secret] ? '✓ Set' : '○ Not Set'">
-                                                    </span>
-                                                    <button @click="setCredential(server.id, secret)"
-                                                            class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                                                            title="Set or update credential value">
-                                                        <span x-text="Alpine.store('credentials').isUnlocked && Alpine.store('credentials').get(server.id)?.[secret] ? 'Update' : 'Set'"></span>
-                                                    </button>
-                                                    <button x-show="Alpine.store('credentials').isUnlocked && Alpine.store('credentials').get(server.id)?.[secret]"
-                                                            @click="removeCredential(server.id, secret)"
-                                                            class="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                                                            title="Remove credential">
-                                                        Remove
-                                                    </button>
+                                        <!-- Current Connection Display -->
+                                        <template x-for="connection in [getServerConnection(selectedBundle.id, server.id)]" :key="connection?.id || 'none'">
+                                            <div x-show="connection" class="p-3 bg-white border border-green-200 rounded-lg">
+                                                <div class="flex items-center justify-between">
+                                                    <div class="flex-1">
+                                                        <div class="flex items-center gap-2 mb-1">
+                                                            <span class="font-medium text-sm" x-text="connection?.name"></span>
+                                                            <span :class="Alpine.store('connections').hasRequiredCredentials(connection?.id, servers) ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'"
+                                                                  class="inline-flex items-center px-2 py-1 text-xs font-medium rounded gap-1">
+                                                                <img :src="Alpine.store('connections').hasRequiredCredentials(connection?.id, servers) ? './icons/success.svg' : './icons/warning.svg'" 
+                                                                     class="w-3 h-3" alt="Status">
+                                                                <span x-text="Alpine.store('connections').hasRequiredCredentials(connection?.id, servers) ? 'Ready' : 'Setup Required'"></span>
+                                                            </span>
+                                                        </div>
+                                                        <div class="text-xs text-gray-500">
+                                                            <template x-for="secret in server.requiredSecrets || []" :key="secret">
+                                                                <span class="inline-block mr-2">
+                                                                    <span :class="connection?.credentials?.[secret] ? 'text-green-600' : 'text-red-600'" 
+                                                                          x-text="secret + (connection?.credentials?.[secret] ? ' ✓' : ' ✗')"></span>
+                                                                </span>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex items-center gap-2">
+                                                        <button @click="editConnection(connection)" 
+                                                                class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                                                title="Edit connection credentials">
+                                                            Edit
+                                                        </button>
+                                                        <button @click="detachConnectionFromServer(selectedBundle.id, server.id)" 
+                                                                class="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                                                                title="Disconnect this server">
+                                                            Disconnect
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </template>
-                                    </div>
-                                    
-                                    <!-- Unlock credentials prompt -->
-                                    <div x-show="!Alpine.store('credentials').isUnlocked" class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                        <div class="flex items-center">
-                                            <img src="./icons/warning.svg" class="w-4 h-4 text-yellow-600 mr-2" alt="Warning">
-                                            <span class="text-sm text-yellow-800">Unlock credentials to manage server secrets</span>
-                                            <button @click="unlockCredentials()" 
-                                                    class="ml-auto px-2 py-1 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors"
-                                                    title="Unlock credentials to manage secrets">
-                                                Unlock
-                                            </button>
+                                        
+                                        <!-- Connection Selection (when not connected) -->
+                                        <div x-show="!getServerConnection(selectedBundle.id, server.id)" class="space-y-3">
+                                            <!-- Available Connections -->
+                                            <template x-for="connection in getServerConnections(server.id)" :key="connection.id">
+                                                <div class="p-3 bg-white border border-gray-200 rounded-lg hover:border-blue-300 cursor-pointer"
+                                                     @click="attachConnectionToServer(selectedBundle.id, server.id, connection.id)">
+                                                    <div class="flex items-center justify-between">
+                                                        <div class="flex-1">
+                                                            <div class="flex items-center gap-2 mb-1">
+                                                                <span class="font-medium text-sm" x-text="connection.name"></span>
+                                                                <span :class="Alpine.store('connections').hasRequiredCredentials(connection.id, servers) ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'"
+                                                                      class="inline-flex items-center px-2 py-1 text-xs font-medium rounded gap-1">
+                                                                    <img :src="Alpine.store('connections').hasRequiredCredentials(connection.id, servers) ? './icons/success.svg' : './icons/warning.svg'" 
+                                                                         class="w-3 h-3" alt="Status">
+                                                                    <span x-text="Alpine.store('connections').hasRequiredCredentials(connection.id, servers) ? 'Ready' : 'Setup Required'"></span>
+                                                                </span>
+                                                            </div>
+                                                            <div class="text-xs text-gray-500">
+                                                                <template x-for="secret in server.requiredSecrets || []" :key="secret">
+                                                                    <span class="inline-block mr-2">
+                                                                        <span :class="connection.credentials?.[secret] ? 'text-green-600' : 'text-red-600'" 
+                                                                              x-text="secret + (connection.credentials?.[secret] ? ' ✓' : ' ✗')"></span>
+                                                                    </span>
+                                                                </template>
+                                                            </div>
+                                                        </div>
+                                                        <div class="flex items-center">
+                                                            <button class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                                                    title="Use this connection">
+                                                                Connect
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                            
+                                            <!-- No Available Connections -->
+                                            <div x-show="getServerConnections(server.id).length === 0" class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                                <div class="flex items-center justify-between">
+                                                    <div class="flex items-center">
+                                                        <img src="./icons/warning.svg" class="w-4 h-4 text-yellow-600 mr-2" alt="Warning">
+                                                        <span class="text-sm text-yellow-800">No connections available for this server</span>
+                                                    </div>
+                                                    <button @click="showCreateConnectionModal = true; newConnectionServerId = server.id; newConnectionName = ''" 
+                                                            class="px-3 py-1 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors"
+                                                            title="Create a new connection for this server">
+                                                        Create Connection
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Create New Connection Option -->
+                                            <div x-show="getServerConnections(server.id).length > 0" class="p-3 bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg">
+                                                <div class="flex items-center justify-between">
+                                                    <div class="flex items-center">
+                                                        <img src="./icons/add.svg" class="w-4 h-4 text-blue-600 mr-2" alt="Add">
+                                                        <span class="text-sm text-blue-800">Create a new connection</span>
+                                                    </div>
+                                                    <button @click="showCreateConnectionModal = true; newConnectionServerId = server.id; newConnectionName = ''" 
+                                                            class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                                            title="Create a new connection for this server">
+                                                        Create
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -782,18 +934,18 @@
                         <div x-show="sortedBundles.length > 0" class="mb-4">
                             <h3 class="text-sm font-medium text-gray-900 mb-2">Select existing bundle:</h3>
                             <div class="space-y-2">
-                                <template x-for="bundle in sortedBundles">
+                                <template x-for="bundle in sortedBundles" :key="bundle.id">
                                     <button @click="addServerToBundle(bundle.id, selectedServer)"
                                             class="w-full text-left p-3 border rounded-lg transition-colors flex items-start justify-between"
-                                            :class="bundle.servers.includes(selectedServer?.id) ? 'border-green-200 bg-green-50 hover:bg-green-100' : 'border-gray-200 hover:bg-gray-50'">
+                                            :class="bundle.servers && bundle.servers.includes(selectedServer?.id) ? 'border-green-200 bg-green-50 hover:bg-green-100' : 'border-gray-200 hover:bg-gray-50'">
                                         <div class="flex-1">
                                             <div class="font-medium" x-text="bundle.name"></div>
                                             <div class="text-sm text-gray-500" x-text="bundle.description"></div>
                                             <div class="text-xs text-gray-400 mt-1">
-                                                <span x-text="bundle.servers.length"></span> servers
+                                                <span x-text="(bundle.servers || []).length"></span> servers
                                             </div>
                                         </div>
-                                        <div x-show="bundle.servers.includes(selectedServer?.id)" class="ml-3 flex items-center text-green-600">
+                                        <div x-show="bundle.servers && bundle.servers.includes(selectedServer?.id)" class="ml-3 flex items-center text-green-600">
                                             <img src="./icons/success.svg" class="w-5 h-5" alt="Added" style="filter: brightness(0) saturate(100%) invert(42%) sepia(88%) saturate(1352%) hue-rotate(87deg) brightness(119%) contrast(109%);">
                                         </div>
                                     </button>
@@ -860,7 +1012,7 @@
                     </div>
                     
                     <div class="flex gap-3">
-                        <button @click="createBundleWithModal(selectedServer)"
+                        <button @click="createBundleWithModal()"
                                 :disabled="!newBundleName?.trim()"
                                 class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
                             Create Bundle
@@ -873,6 +1025,206 @@
                 </div>
             </div>
             
+            <!-- Create Connection Modal -->
+            <div x-show="showCreateConnectionModal" 
+                 class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
+                    <div class="flex justify-between items-start mb-4">
+                        <h2 class="text-lg font-semibold">Create New Connection</h2>
+                        <button @click="showCreateConnectionModal = false" 
+                                class="text-gray-400 hover:text-gray-600 transition-colors">
+                            <img src="./icons/close.svg" class="w-6 h-6" alt="Close">
+                        </button>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-600 mb-4">
+                            Create a named connection for an MCP server with its credentials:
+                        </p>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Connection Name</label>
+                                <input x-model="newConnectionName" 
+                                       type="text" 
+                                       placeholder="e.g., Slack Work, GitHub Personal..." 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">MCP Server</label>
+                                <select x-model="newConnectionServerId" 
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
+                                    <option value="">Select a server...</option>
+                                    <template x-for="server in servers.filter(s => s.requiredSecrets && s.requiredSecrets.length > 0)" :key="server.id">
+                                        <option :value="server.id">
+                                            <span x-text="server.name"></span>
+                                            <span class="text-gray-500" x-text="`(${server.requiredSecrets.length} credentials)`"></span>
+                                        </option>
+                                    </template>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">Only showing servers that require credentials</p>
+                            </div>
+                            
+                            <!-- Show required secrets for selected server -->
+                            <template x-for="server in servers.filter(s => s.id === newConnectionServerId)" :key="server.id">
+                                <div x-show="server.requiredSecrets && server.requiredSecrets.length > 0">
+                                    <h4 class="text-sm font-medium text-gray-700 mb-2">Required Credentials</h4>
+                                    <div class="space-y-3">
+                                        <template x-for="secret in server.requiredSecrets" :key="secret">
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-600 mb-1" x-text="secret"></label>
+                                                <input x-model="newConnectionCredentials[secret]" 
+                                                       type="password" 
+                                                       :placeholder="`Enter ${secret}...`"
+                                                       class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-3">
+                        <button @click="createConnection()"
+                                :disabled="!newConnectionName?.trim() || !newConnectionServerId"
+                                class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
+                            Create Connection
+                        </button>
+                        <button @click="showCreateConnectionModal = false; clearConnectionForm()" 
+                                class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Export Preview Modal -->
+            <div x-show="showExportPreview" 
+                 class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <div class="flex justify-between items-start mb-4">
+                        <h2 class="text-lg font-semibold">Export Bundle Preview</h2>
+                        <button @click="showExportPreview = false" 
+                                class="text-gray-400 hover:text-gray-600 transition-colors">
+                            <img src="./icons/close.svg" class="w-6 h-6" alt="Close">
+                        </button>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <h3 class="font-medium text-lg" x-text="selectedBundle?.name"></h3>
+                        <p class="text-sm text-gray-600" x-text="selectedBundle?.description"></p>
+                    </div>
+                    
+                    <!-- Export Status Summary -->
+                    <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                        <div class="grid grid-cols-2 gap-4 text-center">
+                            <div>
+                                <div class="text-2xl font-bold text-green-600" 
+                                     x-text="getBundleServers(selectedBundle || {}).filter(server => getServerConnection(selectedBundle?.id, server.id)).length"></div>
+                                <div class="text-sm text-gray-600">With Credentials</div>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-bold text-yellow-600" 
+                                     x-text="getBundleServers(selectedBundle || {}).filter(server => !getServerConnection(selectedBundle?.id, server.id) && server.requiredSecrets?.length > 0).length"></div>
+                                <div class="text-sm text-gray-600">Need Setup</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Server Export Status -->
+                    <div class="mb-6">
+                        <h4 class="font-medium mb-3">Export Status by Server</h4>
+                        <div class="space-y-3">
+                            <template x-for="server in getBundleServers(selectedBundle || {})" :key="server.id">
+                                <div class="p-3 border border-gray-200 rounded-lg">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="font-medium" x-text="server.name"></span>
+                                        <template x-if="!server.requiredSecrets || server.requiredSecrets.length === 0">
+                                            <span class="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded gap-1">
+                                                <img src="./icons/success.svg" class="w-3 h-3" alt="Ready">
+                                                No credentials needed
+                                            </span>
+                                        </template>
+                                        <template x-if="server.requiredSecrets && server.requiredSecrets.length > 0">
+                                            <span x-show="getServerConnection(selectedBundle?.id, server.id)" 
+                                                  class="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded gap-1">
+                                                <img src="./icons/success.svg" class="w-3 h-3" alt="Ready">
+                                                Will export with credentials
+                                            </span>
+                                            <span x-show="!getServerConnection(selectedBundle?.id, server.id)" 
+                                                  class="inline-flex items-center px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-700 rounded gap-1">
+                                                <img src="./icons/warning.svg" class="w-3 h-3" alt="Warning">
+                                                Will export with placeholders
+                                            </span>
+                                        </template>
+                                    </div>
+                                    
+                                    <!-- Show connection info if connected -->
+                                    <template x-for="connection in [getServerConnection(selectedBundle?.id, server.id)]" :key="connection?.id || 'none'">
+                                        <div x-show="connection" class="text-xs text-gray-600">
+                                            Connected to: <span class="font-medium" x-text="connection?.name"></span>
+                                            <template x-if="server.requiredSecrets && server.requiredSecrets.length > 0">
+                                                <div class="mt-1">
+                                                    <template x-for="secret in server.requiredSecrets" :key="secret">
+                                                        <span class="inline-block mr-2">
+                                                            <span :class="connection?.credentials?.[secret] ? 'text-green-600' : 'text-red-600'" 
+                                                                  x-text="secret + (connection?.credentials?.[secret] ? ' ✓' : ' ✗')"></span>
+                                                        </span>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    
+                                    <!-- Show placeholder info if not connected -->
+                                    <div x-show="!getServerConnection(selectedBundle?.id, server.id) && server.requiredSecrets && server.requiredSecrets.length > 0" 
+                                         class="text-xs text-gray-600">
+                                        Will use placeholders: 
+                                        <template x-for="secret in server.requiredSecrets" :key="secret">
+                                            <span class="inline-block mr-2 font-mono text-yellow-700" x-text="'${' + secret + '}'"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    
+                    <!-- Export Format Selection -->
+                    <div class="mb-6">
+                        <h4 class="font-medium mb-3">Export Format</h4>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="radio" name="exportFormat" value="claude.json" x-model="exportFormat" class="mr-2">
+                                <div>
+                                    <div class="font-medium">Claude Desktop/Code Format</div>
+                                    <div class="text-sm text-gray-600">Ready to use with Claude Desktop or Claude Code</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="exportFormat" value="bundle.json" x-model="exportFormat" class="mr-2">
+                                <div>
+                                    <div class="font-medium">Custom Bundle Format</div>
+                                    <div class="text-sm text-gray-600">Detailed format with connection metadata</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-3">
+                        <button @click="exportBundleWithFormat(selectedBundle, exportFormat)" 
+                                class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                            Export Bundle
+                        </button>
+                        <button @click="showExportPreview = false" 
+                                class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Import Preview Modal -->
             <div x-show="currentView === 'import-preview'" 
                  class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -909,23 +1261,29 @@
         
         <!-- Bottom Navigation (Mobile) -->
         <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 md:hidden">
-            <div class="grid grid-cols-3 h-16">
+            <div class="grid grid-cols-4 h-16">
                 <button @click="navigateToView('catalogue')" 
                         :class="currentView === 'catalogue' ? 'text-blue-600' : 'text-gray-400'"
                         class="flex flex-col items-center justify-center">
-                    <img src="./icons/folder.svg" class="w-5 h-5 mb-1" alt="Catalogue">
+                    <img src="./icons/folder.svg" class="w-4 h-4 mb-1" alt="Catalogue">
                     <span class="text-xs">Servers</span>
+                </button>
+                <button @click="navigateToView('connections')"
+                        :class="currentView === 'connections' ? 'text-blue-600' : 'text-gray-400'"
+                        class="flex flex-col items-center justify-center">
+                    <img src="./icons/key.svg" class="w-4 h-4 mb-1" alt="Connections">
+                    <span class="text-xs">Connections</span>
                 </button>
                 <button @click="navigateToView('bundles')"
                         :class="currentView === 'bundles' ? 'text-blue-600' : 'text-gray-400'"
                         class="flex flex-col items-center justify-center">
-                    <img src="./icons/package.svg" class="w-5 h-5 mb-1" alt="Bundles">
+                    <img src="./icons/package.svg" class="w-4 h-4 mb-1" alt="Bundles">
                     <span class="text-xs">Bundles</span>
                 </button>
                 <button @click="navigateToView('settings')"
                         :class="currentView === 'settings' ? 'text-blue-600' : 'text-gray-400'"
                         class="flex flex-col items-center justify-center">
-                    <img src="./icons/settings.svg" class="w-5 h-5 mb-1" alt="Settings">
+                    <img src="./icons/settings.svg" class="w-4 h-4 mb-1" alt="Settings">
                     <span class="text-xs">Settings</span>
                 </button>
             </div>
@@ -941,6 +1299,12 @@
                             class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg">
                         <img src="./icons/folder.svg" class="w-5 h-5 mr-3" alt="Catalogue">
                         Server Catalogue
+                    </button>
+                    <button @click="navigateToView('connections')"
+                            :class="currentView === 'connections' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'"
+                            class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg">
+                        <img src="./icons/key.svg" class="w-5 h-5 mr-3" alt="Connections">
+                        My Connections
                     </button>
                     <button @click="navigateToView('bundles')"
                             :class="currentView === 'bundles' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'"

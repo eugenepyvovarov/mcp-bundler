@@ -4,6 +4,7 @@
 // Storage keys as defined in Section 4.1
 const STORAGE_KEYS = {
   bundles: 'mcp-catalogue:v1:bundles',
+  connections: 'mcp-catalogue:v1:connections',
   credentials: 'mcp-catalogue:v1:credentials', 
   settings: 'mcp-catalogue:v1:settings',
   cache: 'mcp-catalogue:v1:cache'
@@ -79,7 +80,8 @@ document.addEventListener('alpine:init', () => {
         id: Date.now().toString(),
         name: name.trim(),
         description: description.trim(),
-        servers: [],
+        servers: [], // Back to servers array
+        serverConnections: {}, // Maps serverId to connectionId
         created: new Date().toISOString(),
         updated: new Date().toISOString(),
         metadata: {
@@ -152,6 +154,264 @@ document.addEventListener('alpine:init', () => {
       this.items = data.bundles;
       this.save();
       console.log('Bundles imported:', data.bundles.length);
+    },
+
+    // Add server to bundle
+    addServer(bundleId, serverId) {
+      const bundle = this.getById(bundleId);
+      if (!bundle) {
+        throw new Error('Bundle not found');
+      }
+      
+      if (!bundle.servers.includes(serverId)) {
+        bundle.servers.push(serverId);
+        bundle.updated = new Date().toISOString();
+        this.save();
+      }
+      
+      return bundle;
+    },
+
+    // Remove server from bundle
+    removeServer(bundleId, serverId) {
+      const bundle = this.getById(bundleId);
+      if (!bundle) {
+        throw new Error('Bundle not found');
+      }
+      
+      const index = bundle.servers.indexOf(serverId);
+      if (index > -1) {
+        bundle.servers.splice(index, 1);
+        // Also remove any attached connection for this server
+        if (bundle.serverConnections && bundle.serverConnections[serverId]) {
+          delete bundle.serverConnections[serverId];
+        }
+        bundle.updated = new Date().toISOString();
+        this.save();
+      }
+      
+      return bundle;
+    },
+
+    // Attach connection to server in bundle
+    attachConnection(bundleId, serverId, connectionId) {
+      const bundle = this.getById(bundleId);
+      if (!bundle) {
+        throw new Error('Bundle not found');
+      }
+      
+      if (!bundle.servers.includes(serverId)) {
+        throw new Error('Server not in bundle');
+      }
+      
+      if (!bundle.serverConnections) {
+        bundle.serverConnections = {};
+      }
+      
+      bundle.serverConnections[serverId] = connectionId;
+      bundle.updated = new Date().toISOString();
+      this.save();
+      
+      return bundle;
+    },
+
+    // Detach connection from server in bundle
+    detachConnection(bundleId, serverId) {
+      const bundle = this.getById(bundleId);
+      if (!bundle) {
+        throw new Error('Bundle not found');
+      }
+      
+      if (bundle.serverConnections && bundle.serverConnections[serverId]) {
+        delete bundle.serverConnections[serverId];
+        bundle.updated = new Date().toISOString();
+        this.save();
+      }
+      
+      return bundle;
+    },
+
+    // Get attached connection for server in bundle
+    getServerConnection(bundleId, serverId) {
+      const bundle = this.getById(bundleId);
+      if (!bundle || !bundle.serverConnections) return null;
+      
+      const connectionId = bundle.serverConnections[serverId];
+      return connectionId ? Alpine.store('connections').get(connectionId) : null;
+    },
+
+    // Check if server has attached connection in bundle
+    hasServerConnection(bundleId, serverId) {
+      const bundle = this.getById(bundleId);
+      return bundle && bundle.serverConnections && !!bundle.serverConnections[serverId];
+    }
+  });
+
+  // Connections Store - Named MCP Server Connections with Credentials
+  Alpine.store('connections', {
+    items: [],
+    
+    init() {
+      this.load();
+    },
+    
+    load() {
+      const data = storage.get(STORAGE_KEYS.connections);
+      this.items = data ? data.connections || [] : [];
+      console.log('Connections loaded:', this.items.length);
+    },
+    
+    save() {
+      const data = {
+        connections: this.items,
+        version: '1.0.0',
+        updated: new Date().toISOString()
+      };
+      
+      if (storage.set(STORAGE_KEYS.connections, data)) {
+        console.log('Connections saved');
+      } else {
+        console.error('Failed to save connections');
+      }
+    },
+    
+    // Create a new connection
+    create(name, serverId, credentials = {}) {
+      const connection = {
+        id: 'conn_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        name: name.trim(),
+        serverId: serverId,
+        credentials: credentials, // Object like { SLACK_BOT_TOKEN: "xoxb-...", SLACK_APP_TOKEN: "xapp-..." }
+        created: new Date().toISOString(),
+        updated: new Date().toISOString()
+      };
+      
+      this.items.push(connection);
+      this.save();
+      return connection;
+    },
+    
+    // Update a connection
+    update(connectionId, updates) {
+      const connection = this.items.find(c => c.id === connectionId);
+      if (!connection) {
+        throw new Error('Connection not found');
+      }
+      
+      Object.assign(connection, updates, {
+        updated: new Date().toISOString()
+      });
+      
+      this.save();
+      return connection;
+    },
+    
+    // Delete a connection
+    delete(connectionId) {
+      const index = this.items.findIndex(c => c.id === connectionId);
+      if (index === -1) {
+        throw new Error('Connection not found');
+      }
+      
+      // Check if connection is used in any bundles
+      const bundles = Alpine.store('bundles').items;
+      const isUsed = bundles.some(bundle => 
+        bundle.connections && bundle.connections.includes(connectionId)
+      );
+      
+      if (isUsed) {
+        throw new Error('Cannot delete connection - it is used in one or more bundles');
+      }
+      
+      this.items.splice(index, 1);
+      this.save();
+      return true;
+    },
+    
+    // Get connection by ID
+    get(connectionId) {
+      return this.items.find(c => c.id === connectionId);
+    },
+    
+    // Get connections for a specific server type
+    getByServerId(serverId) {
+      return this.items.filter(c => c.serverId === serverId);
+    },
+    
+    // Update connection credentials (all at once)
+    updateCredentials(connectionId, credentials) {
+      const connection = this.get(connectionId);
+      if (!connection) {
+        throw new Error('Connection not found');
+      }
+      
+      connection.credentials = credentials;
+      connection.updated = new Date().toISOString();
+      this.save();
+      return connection;
+    },
+    
+    // Set a single credential within a connection
+    setCredential(connectionId, secretName, value) {
+      const connection = this.get(connectionId);
+      if (!connection) {
+        throw new Error('Connection not found');
+      }
+      
+      if (!connection.credentials) {
+        connection.credentials = {};
+      }
+      
+      connection.credentials[secretName] = value;
+      connection.updated = new Date().toISOString();
+      this.save();
+      return connection;
+    },
+    
+    // Remove a single credential from a connection
+    removeCredential(connectionId, secretName) {
+      const connection = this.get(connectionId);
+      if (!connection) {
+        throw new Error('Connection not found');
+      }
+      
+      if (connection.credentials && connection.credentials[secretName]) {
+        delete connection.credentials[secretName];
+        connection.updated = new Date().toISOString();
+        this.save();
+      }
+      
+      return connection;
+    },
+    
+    // Check if connection has all required credentials for its server
+    hasRequiredCredentials(connectionId, servers) {
+      const connection = this.get(connectionId);
+      if (!connection) return false;
+      
+      const server = servers.find(s => s.id === connection.serverId);
+      if (!server || !server.requiredSecrets) return true;
+      
+      return server.requiredSecrets.every(secret => 
+        connection.credentials && 
+        connection.credentials[secret] && 
+        connection.credentials[secret].trim()
+      );
+    },
+    
+    // Get missing credentials for a connection
+    getMissingCredentials(connectionId, servers) {
+      const connection = this.get(connectionId);
+      if (!connection) return [];
+      
+      const server = servers.find(s => s.id === connection.serverId);
+      if (!server || !server.requiredSecrets) return [];
+      
+      return server.requiredSecrets.filter(secret => 
+        !connection.credentials || 
+        !connection.credentials[secret] || 
+        !connection.credentials[secret].trim()
+      );
     }
   });
   
@@ -394,7 +654,8 @@ document.addEventListener('alpine:init', () => {
     }
   });
   
-  // Initialize settings on load
+  // Initialize stores on load
+  Alpine.store('connections').init();
   Alpine.store('settings').init();
 });
 
