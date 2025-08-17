@@ -1288,34 +1288,34 @@
         <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 md:hidden z-50 safe-area-bottom safe-area-left safe-area-right">
             <div class="grid grid-cols-4 h-16">
                 <button @click="navigateToView('catalogue')" 
-                        :class="currentView === 'catalogue' ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'"
-                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-colors">
+                        :class="currentView === 'catalogue' ? 'text-blue-600 bg-blue-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
+                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-all duration-200">
                     <img src="./icons/folder.svg" 
-                         :class="currentView === 'catalogue' ? 'nav-icon-active' : 'nav-icon-inactive'"
+                         :style="currentView === 'catalogue' ? 'filter: brightness(0) saturate(100%) invert(36%) sepia(77%) saturate(2398%) hue-rotate(213deg) brightness(95%) contrast(101%);' : 'filter: opacity(60%);'"
                          class="w-4 h-4 mb-1" alt="Catalogue">
                     <span class="text-xs font-medium">Servers</span>
                 </button>
                 <button @click="navigateToView('connections')"
-                        :class="currentView === 'connections' ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'"
-                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-colors">
+                        :class="currentView === 'connections' ? 'text-blue-600 bg-blue-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
+                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-all duration-200">
                     <img src="./icons/key.svg" 
-                         :class="currentView === 'connections' ? 'nav-icon-active' : 'nav-icon-inactive'"
+                         :style="currentView === 'connections' ? 'filter: brightness(0) saturate(100%) invert(36%) sepia(77%) saturate(2398%) hue-rotate(213deg) brightness(95%) contrast(101%);' : 'filter: opacity(60%);'"
                          class="w-4 h-4 mb-1" alt="Connections">
                     <span class="text-xs font-medium">Connections</span>
                 </button>
                 <button @click="navigateToView('bundles')"
-                        :class="(currentView === 'bundles' || currentView === 'bundle-details') ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'"
-                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-colors">
+                        :class="(currentView === 'bundles' || currentView === 'bundle-details') ? 'text-blue-600 bg-blue-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
+                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-all duration-200">
                     <img src="./icons/package.svg" 
-                         :class="(currentView === 'bundles' || currentView === 'bundle-details') ? 'nav-icon-active' : 'nav-icon-inactive'"
+                         :style="(currentView === 'bundles' || currentView === 'bundle-details') ? 'filter: brightness(0) saturate(100%) invert(36%) sepia(77%) saturate(2398%) hue-rotate(213deg) brightness(95%) contrast(101%);' : 'filter: opacity(60%);'"
                          class="w-4 h-4 mb-1" alt="Bundles">
                     <span class="text-xs font-medium">Bundles</span>
                 </button>
                 <button @click="navigateToView('settings')"
-                        :class="currentView === 'settings' ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'"
-                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-colors">
+                        :class="currentView === 'settings' ? 'text-blue-600 bg-blue-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
+                        class="flex flex-col items-center justify-center px-2 py-2 rounded-lg transition-all duration-200">
                     <img src="./icons/settings.svg" 
-                         :class="currentView === 'settings' ? 'nav-icon-active' : 'nav-icon-inactive'"
+                         :style="currentView === 'settings' ? 'filter: brightness(0) saturate(100%) invert(36%) sepia(77%) saturate(2398%) hue-rotate(213deg) brightness(95%) contrast(101%);' : 'filter: opacity(60%);'"
                          class="w-4 h-4 mb-1" alt="Settings">
                     <span class="text-xs font-medium">Settings</span>
                 </button>
