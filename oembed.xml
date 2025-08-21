@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<oembed>
+    <version>1.0</version>
+    <type>rich</type>
+    <width>600</width>
+    <height>400</height>
+    <title>MCP Bundle Preview</title>
+    <author_name>MCP Bundler</author_name>
+    <author_url>https://mcp-bundler.maketry.xyz</author_url>
+    <provider_name>MCP Bundler</provider_name>
+    <provider_url>https://mcp-bundler.maketry.xyz</provider_url>
+    <html>&lt;iframe src="[URL]" width="600" height="400" frameborder="0"&gt;&lt;/iframe&gt;</html>
+</oembed>

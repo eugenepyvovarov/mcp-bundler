@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "type": "rich",
+  "width": 600,
+  "height": 400,
+  "title": "MCP Bundle Preview",
+  "author_name": "MCP Bundler",
+  "author_url": "https://mcp-bundler.maketry.xyz",
+  "provider_name": "MCP Bundler",
+  "provider_url": "https://mcp-bundler.maketry.xyz",
+  "html": "<iframe src=\"[URL]\" width=\"600\" height=\"400\" frameborder=\"0\"></iframe>"
+}

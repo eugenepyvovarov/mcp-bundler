@@ -157,14 +157,30 @@ document.addEventListener('alpine:init', () => {
     },
 
     // Add server to bundle
-    addServer(bundleId, serverId) {
+    addServer(bundleId, serverId, packageIndex = 0) {
       const bundle = this.getById(bundleId);
       if (!bundle) {
         throw new Error('Bundle not found');
       }
       
-      if (!bundle.servers.includes(serverId)) {
-        bundle.servers.push(serverId);
+      // Initialize servers array if needed
+      if (!bundle.servers) {
+        bundle.servers = [];
+      }
+      
+      // Check if server already exists
+      const existing = bundle.servers.find(s => 
+        (typeof s === 'string' && s === serverId) ||
+        (typeof s === 'object' && s.serverId === serverId)
+      );
+      
+      if (!existing) {
+        // Add as new format object
+        bundle.servers.push({
+          serverId: serverId,
+          packageIndex: packageIndex,
+          connectionId: null
+        });
         bundle.updated = new Date().toISOString();
         this.save();
       }
@@ -179,7 +195,14 @@ document.addEventListener('alpine:init', () => {
         throw new Error('Bundle not found');
       }
       
-      const index = bundle.servers.indexOf(serverId);
+      if (!bundle.servers) return bundle;
+      
+      // Find index handling both old and new format
+      const index = bundle.servers.findIndex(s => 
+        (typeof s === 'string' && s === serverId) ||
+        (typeof s === 'object' && s.serverId === serverId)
+      );
+      
       if (index > -1) {
         bundle.servers.splice(index, 1);
         // Also remove any attached connection for this server
@@ -200,7 +223,13 @@ document.addEventListener('alpine:init', () => {
         throw new Error('Bundle not found');
       }
       
-      if (!bundle.servers.includes(serverId)) {
+      // Check if server exists in bundle (handle both formats)
+      const serverExists = bundle.servers && bundle.servers.some(s => 
+        (typeof s === 'string' && s === serverId) ||
+        (typeof s === 'object' && s.serverId === serverId)
+      );
+      
+      if (!serverExists) {
         throw new Error('Server not in bundle');
       }
       
@@ -276,12 +305,13 @@ document.addEventListener('alpine:init', () => {
     },
     
     // Create a new connection
-    create(name, serverId, credentials = {}) {
+    create(name, serverId, packageId, credentials = {}) {
       const connection = {
         id: 'conn_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
         name: name.trim(),
         serverId: serverId,
-        credentials: credentials, // Object like { SLACK_BOT_TOKEN: "xoxb-...", SLACK_APP_TOKEN: "xapp-..." }
+        packageId: packageId, // Now connections are per-package
+        credentials: credentials, // Environment variables for this package
         created: new Date().toISOString(),
         updated: new Date().toISOString()
       };
@@ -338,6 +368,16 @@ document.addEventListener('alpine:init', () => {
       return this.items.filter(c => c.serverId === serverId);
     },
     
+    // Get connections for a specific package
+    getByPackageId(packageId) {
+      return this.items.filter(c => c.packageId === packageId);
+    },
+    
+    // Get connection for specific server and package
+    getByServerAndPackage(serverId, packageId) {
+      return this.items.find(c => c.serverId === serverId && c.packageId === packageId);
+    },
+    
     // Update connection credentials (all at once)
     updateCredentials(connectionId, credentials) {
       const connection = this.get(connectionId);
@@ -384,126 +424,88 @@ document.addEventListener('alpine:init', () => {
       return connection;
     },
     
-    // Check if connection has all required credentials for its server
-    hasRequiredCredentials(connectionId, servers) {
+    // Check if connection has all required credentials for its package
+    hasRequiredCredentials(connectionId, packageData = null) {
       const connection = this.get(connectionId);
       if (!connection) return false;
       
-      const server = servers.find(s => s.id === connection.serverId);
-      if (!server || !server.requiredSecrets) return true;
+      // If no package data provided, we'll need to get it from the database
+      // For now, just check if connection has any credentials
+      if (!connection.credentials) return false;
       
-      return server.requiredSecrets.every(secret => 
-        connection.credentials && 
-        connection.credentials[secret] && 
-        connection.credentials[secret].trim()
-      );
+      // If package data is provided, check required environment variables
+      if (packageData && packageData.environment_variables) {
+        const requiredVars = packageData.environment_variables.filter(env => env.is_required);
+        return requiredVars.every(envVar => 
+          connection.credentials[envVar.name] && 
+          connection.credentials[envVar.name].trim()
+        );
+      }
+      
+      // If no package data, just check if any credentials exist
+      return Object.keys(connection.credentials).length > 0;
     },
     
     // Get missing credentials for a connection
-    getMissingCredentials(connectionId, servers) {
+    getMissingCredentials(connectionId, packageData = null) {
       const connection = this.get(connectionId);
       if (!connection) return [];
       
-      const server = servers.find(s => s.id === connection.serverId);
-      if (!server || !server.requiredSecrets) return [];
+      if (!packageData || !packageData.environment_variables) return [];
       
-      return server.requiredSecrets.filter(secret => 
+      const requiredVars = packageData.environment_variables.filter(env => env.is_required);
+      return requiredVars.filter(envVar => 
         !connection.credentials || 
-        !connection.credentials[secret] || 
-        !connection.credentials[secret].trim()
-      );
+        !connection.credentials[envVar.name] || 
+        !connection.credentials[envVar.name].trim()
+      ).map(envVar => envVar.name);
     }
   });
   
-  // Credentials Store - Section 5.1 Credential Protection
+  // Credentials Store - Simple plain text storage (client-side only)
   Alpine.store('credentials', {
-    encrypted: true,
     data: null,
-    isUnlocked: false,
     
-    // Unlock credentials with passphrase
-    async unlock(passphrase) {
-      const encrypted = storage.get(STORAGE_KEYS.credentials);
-      if (!encrypted) {
-        this.data = {};
-        this.isUnlocked = true;
-        return this.data;
-      }
-      
-      try {
-        if (window.crypto && Alpine.store('crypto')) {
-          this.data = await Alpine.store('crypto').decrypt(encrypted, passphrase);
-        } else {
-          // Fallback for development - store in plain text with warning
-          console.warn('Crypto not available - credentials stored in plain text!');
-          this.data = encrypted;
-        }
-        
-        this.isUnlocked = true;
-        console.log('Credentials unlocked');
-        return this.data;
-      } catch (error) {
-        console.error('Failed to unlock credentials:', error);
-        throw new Error('Invalid passphrase');
-      }
+    // Initialize credentials
+    init() {
+      const stored = storage.get(STORAGE_KEYS.credentials);
+      this.data = stored || {};
+      console.log('Credentials loaded');
     },
     
-    // Save credentials with encryption
-    async save(credentials, passphrase) {
-      this.data = credentials;
-      
-      try {
-        if (window.crypto && Alpine.store('crypto')) {
-          const encrypted = await Alpine.store('crypto').encrypt(credentials, passphrase);
-          storage.set(STORAGE_KEYS.credentials, encrypted);
-        } else {
-          // Fallback for development
-          console.warn('Crypto not available - credentials stored in plain text!');
-          storage.set(STORAGE_KEYS.credentials, credentials);
-        }
-        
-        console.log('Credentials saved');
-      } catch (error) {
-        console.error('Failed to save credentials:', error);
-        throw error;
-      }
+    // Save credentials to localStorage
+    save() {
+      storage.set(STORAGE_KEYS.credentials, this.data);
+      console.log('Credentials saved');
     },
     
     // Get credential for server
     get(serverId) {
-      return this.isUnlocked && this.data ? this.data[serverId] : null;
+      if (!this.data) this.init();
+      return this.data[serverId] || null;
     },
     
     // Set credential for server
     set(serverId, credential) {
-      if (!this.isUnlocked) {
-        throw new Error('Credentials are locked');
-      }
-      
-      if (!this.data) this.data = {};
+      if (!this.data) this.init();
       this.data[serverId] = credential;
+      this.save();
     },
     
     // Remove credential for server
     remove(serverId) {
-      if (this.isUnlocked && this.data) {
+      if (!this.data) this.init();
+      if (this.data[serverId]) {
         delete this.data[serverId];
+        this.save();
         return true;
       }
       return false;
     },
     
-    // Lock credentials
-    lock() {
-      this.data = null;
-      this.isUnlocked = false;
-      console.log('Credentials locked');
-    },
-    
     // Clear all credentials
     clear() {
       this.data = {};
-      this.isUnlocked = false;
       storage.remove(STORAGE_KEYS.credentials);
       console.log('All credentials cleared');
     }
@@ -573,7 +575,6 @@ document.addEventListener('alpine:init', () => {
   Alpine.store('settings', {
     // Default settings
     defaults: {
-      encryptionEnabled: true,
       defaultExportFormat: 'claude.json',
       theme: 'system', // system, light, dark
       language: 'en',
@@ -656,6 +657,7 @@ document.addEventListener('alpine:init', () => {
   
   // Initialize stores on load
   Alpine.store('connections').init();
+  Alpine.store('credentials').init();
   Alpine.store('settings').init();
 });
 

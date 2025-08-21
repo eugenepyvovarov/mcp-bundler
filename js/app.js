@@ -1,18 +1,32 @@
 // Main Alpine.js app component
 // Following Section 8.3 - Alpine.js Component Architecture
 
+// Import server utilities and database
+import * as serverUtils from './serverUtils.js';
+import database from './database.js';
+
+// Make utilities available globally for debugging
+window.serverUtils = serverUtils;
+window.database = database;
+
 document.addEventListener('alpine:init', () => {
   Alpine.data('app', () => ({
     // State variables
     currentView: 'catalogue',
     servers: [],
+    serverCategories: [], // Categories fetched from database
     searchQuery: '',
-    selectedCategory: 'all',
+    selectedCategory: 'All Servers',
     installPrompt: null,
     isOnline: true, // Start as online, let network events update this
     isLocalFile: window.location.protocol === 'file:',
     importPreview: null,
     loading: false,
+    selectedPackageIndex: {}, // Track selected package for each server
+    
+    // Pagination state
+    currentPage: 1,
+    serversPerPage: 50,
     
     // Bundle management state
     showBundleSelectorModal: false,
@@ -30,9 +44,16 @@ document.addEventListener('alpine:init', () => {
     
     // Connection management state
     showCreateConnectionModal: false,
+    showEditConnectionModal: false,
     newConnectionName: '',
     newConnectionServerId: '',
+    newConnectionPackageId: '',
     newConnectionCredentials: {},
+    editingConnection: null,
+    editConnectionName: '',
+    editConnectionCredentials: {},
+    showCredentials: {}, // Track which credentials are shown for create modal
+    showEditCredentials: {}, // Track which credentials are shown for edit modal
     
     // Export management state
     showExportPreview: false,
@@ -47,29 +68,67 @@ document.addEventListener('alpine:init', () => {
     
     // Computed properties
     get filteredServers() {
-      return this.servers.filter(server => {
-        const matchesSearch = server.name.toLowerCase()
-          .includes(this.searchQuery.toLowerCase()) ||
-          server.description.toLowerCase()
-          .includes(this.searchQuery.toLowerCase()) ||
-          server.tags.some(tag => tag.toLowerCase().includes(this.searchQuery.toLowerCase()));
-        
-        const matchesCategory = this.selectedCategory === 'all' || 
-          server.category === this.selectedCategory;
-        
-        return matchesSearch && matchesCategory;
-      });
+      // Return paginated servers
+      const startIndex = (this.currentPage - 1) * this.serversPerPage;
+      const endIndex = startIndex + this.serversPerPage;
+      return this.servers.slice(startIndex, endIndex);
+    },
+    
+    get totalPages() {
+      return Math.ceil(this.servers.length / this.serversPerPage);
+    },
+    
+    get paginationInfo() {
+      const startIndex = (this.currentPage - 1) * this.serversPerPage + 1;
+      const endIndex = Math.min(startIndex + this.serversPerPage - 1, this.servers.length);
+      return {
+        start: startIndex,
+        end: endIndex,
+        total: this.servers.length
+      };
+    },
+    
+    // Debounced search
+    searchDebounceTimeout: null,
+    
+    async performSearch() {
+      // Clear existing timeout
+      if (this.searchDebounceTimeout) {
+        clearTimeout(this.searchDebounceTimeout);
+      }
+      
+      // Debounce search by 300ms
+      this.searchDebounceTimeout = setTimeout(async () => {
+        this.loading = true;
+        this.currentPage = 1; // Reset to first page when searching
+        try {
+          if (this.searchQuery && this.searchQuery.trim() !== '') {
+            // Use database full-text search
+            const results = await database.searchServers(this.searchQuery, 10000);
+            this.servers = await this.transformServersFromDB(results);
+          } else {
+            // Load all servers if no search query
+            const allServers = await database.getServers(10000);
+            this.servers = await this.transformServersFromDB(allServers);
+          }
+          
+          // Update selected package indices
+          this.servers.forEach(server => {
+            if (server.packages && !this.selectedPackageIndex[server.id]) {
+              this.selectedPackageIndex[server.id] = serverUtils.selectDefaultPackage(server.packages);
+            }
+          });
+        } catch (error) {
+          console.error('Search failed:', error);
+          this.showToast('Search failed', 'error');
+        } finally {
+          this.loading = false;
+        }
+      }, 300);
     },
     
     get categories() {
-      const cats = [...new Set(this.servers.map(s => s.category))];
-      return [
-        { id: 'all', name: 'All Categories' }, 
-        ...cats.map(c => ({ 
-          id: c, 
-          name: c.charAt(0).toUpperCase() + c.slice(1) 
-        }))
-      ];
+      return this.serverCategories || [];
     },
     
     get showOfflineIndicator() {
@@ -97,7 +156,7 @@ document.addEventListener('alpine:init', () => {
     },
     
     // Lifecycle methods
-    init() {
+    async init() {
       console.log('MCP Catalogue app initializing...');
       console.log('Protocol:', window.location.protocol);
       console.log('isLocalFile:', this.isLocalFile);
@@ -108,7 +167,7 @@ document.addEventListener('alpine:init', () => {
       // Reset all modal states first
       this.resetModalStates();
       
-      this.loadServers();
+      await this.loadServers();
       this.setupInstallPrompt();
       this.registerServiceWorker();
       this.setupOfflineDetection();
@@ -127,76 +186,148 @@ document.addEventListener('alpine:init', () => {
       this.loading = true;
       
       try {
-        // Try to load from network first
-        const response = await fetch('./data/servers.json');
+        // Initialize database and load servers
+        await database.init();
         
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        // Load categories from database
+        const categories = await database.getCategories();
+        // Filter out categories with 0 servers
+        const nonEmptyCategories = categories.filter(cat => cat.server_count > 0);
+        this.serverCategories = [
+          { name: 'All Servers', server_count: null },
+          ...nonEmptyCategories
+        ];
         
-        const data = await response.json();
+        // Load all servers from database
+        const dbServers = await database.getServers(10000);
         
-        if (!data || !Array.isArray(data.servers)) {
-          throw new Error('Invalid server data format');
-        }
+        // Transform database results to match expected format
+        this.servers = await this.transformServersFromDB(dbServers);
         
-        this.servers = data.servers;
+        // Initialize selected package index for each server
+        this.servers.forEach(server => {
+          if (server.packages) {
+            this.selectedPackageIndex[server.id] = serverUtils.selectDefaultPackage(server.packages);
+          }
+        });
         
-        // Cache for offline use
-        Alpine.store('cache').set('servers', data);
-        console.log('Server catalogue loaded:', this.servers.length, 'servers');
+        console.log('Server catalogue loaded from database:', this.servers.length, 'servers');
+        
+        // Get and display database stats
+        const stats = await database.getStats();
+        console.log('Database stats:', stats);
         
       } catch (error) {
-        console.warn('Failed to load servers from network:', error.message);
-        
-        // Load from cache if offline
-        const cached = Alpine.store('cache').get('servers');
-        if (cached && cached.servers && Array.isArray(cached.servers)) {
-          this.servers = cached.servers;
-          console.log('Server catalogue loaded from cache:', this.servers.length, 'servers');
-          this.showToast('Loaded from cache - you may be offline', 'success');
-        } else {
-          console.error('No cached server data available');
-          this.showToast('Failed to load server catalogue', 'error');
-          
-          // Fallback: create minimal server list
-          this.servers = [
-            {
-              id: 'filesystem',
-              name: 'Filesystem Server',
-              description: 'Direct access to local file system',
-              category: 'development',
-              tags: ['file', 'storage', 'local'],
-              official: true,
-              requiredSecrets: [],
-              config: {
-                command: 'npx',
-                args: ['-y', '@modelcontextprotocol/server-filesystem', '/allowed/path'],
-                env: {}
-              }
-            },
-            {
-              id: 'slack',
-              name: 'Slack Server',
-              description: 'Interact with Slack workspaces and channels',
-              category: 'productivity', 
-              tags: ['slack', 'messaging', 'api'],
-              official: true,
-              requiredSecrets: ['SLACK_BOT_TOKEN'],
-              config: {
-                command: 'npx',
-                args: ['-y', '@modelcontextprotocol/server-slack'],
-                env: {
-                  SLACK_BOT_TOKEN: '${SLACK_BOT_TOKEN}'
-                }
-              }
-            }
-          ];
-          console.log('Using fallback server data');
-        }
+        console.error('Failed to load servers from database:', error);
+        this.servers = [];
+        this.showToast('Failed to load server catalogue', 'error');
       } finally {
         this.loading = false;
       }
+    },
+    
+    // Transform database results to match the expected format
+    async transformServersFromDB(servers, loadFullDetails = false) {
+      const transformed = [];
+      
+      for (const server of servers) {
+        let fullServer = server;
+        
+        // Load full details if explicitly requested OR if server might have environment variables
+        if (loadFullDetails && !server.packages) {
+          fullServer = await database.getServerById(server.id);
+        } else if (server.packages?.length === 0 || (server.packages?.length > 0 && server.packages.some(pkg => 
+            pkg.environment_variables?.length > 0 && 
+            !pkg.environment_variables[0].name
+          ))) {
+          // Load full details for servers with:
+          // 1. No packages (might have environment variables we haven't loaded)
+          // 2. Placeholder packages without actual env var names
+          fullServer = await database.getServerById(server.id);
+        }
+        
+        if (fullServer) {
+          // Transform to match expected structure
+          const transformedServer = {
+            id: fullServer.id,
+            name: fullServer.name,
+            display_name: fullServer.display_name || fullServer.name,
+            description: fullServer.description,
+            ai_description: fullServer.ai_description,
+            repository: fullServer.repository_url ? {
+              url: fullServer.repository_url,
+              source: fullServer.repository_source || 'github',
+              id: fullServer.repository_id
+            } : null,
+            // Flatten repository URL for direct access
+            repository_url: fullServer.repository_url,
+            repository_path: fullServer.repository_url ? 
+              fullServer.repository_url.replace('https://github.com/', '') : null,
+            version_detail: {
+              version: fullServer.version,
+              release_date: fullServer.release_date,
+              is_latest: fullServer.is_latest
+            },
+            packages: fullServer.packages || [],
+            // Keep nested github object for compatibility
+            github: fullServer.stars !== undefined ? {
+              stars: fullServer.stars,
+              forks: fullServer.forks,
+              watchers: fullServer.watchers,
+              open_issues: fullServer.open_issues,
+              language: fullServer.language,
+              license: fullServer.license,
+              homepage: fullServer.homepage,
+              archived: fullServer.archived,
+              updatedAt: fullServer.github_updated_at,
+              createdAt: fullServer.github_created_at,
+              topics: fullServer.github_topics ? 
+                (typeof fullServer.github_topics === 'string' ? 
+                  fullServer.github_topics.split(',').map(t => t.trim()).filter(t => t) : 
+                  (Array.isArray(fullServer.github_topics) ? fullServer.github_topics : [])) : []
+            } : null,
+            // Also flatten GitHub data for easier access in templates
+            stars: fullServer.stars,
+            forks: fullServer.forks,
+            watchers: fullServer.watchers,
+            open_issues: fullServer.open_issues,
+            language: fullServer.language,
+            license: fullServer.license,
+            homepage: fullServer.homepage,
+            archived: fullServer.archived,
+            github_updated_at: fullServer.github_updated_at,
+            github_created_at: fullServer.github_created_at,
+            github_topics: fullServer.github_topics ? 
+              (typeof fullServer.github_topics === 'string' ? 
+                fullServer.github_topics.split(',').map(t => t.trim()).filter(t => t) : 
+                (Array.isArray(fullServer.github_topics) ? fullServer.github_topics : [])) : [],
+            categories: fullServer.categories ? 
+              (typeof fullServer.categories === 'string' ? 
+                fullServer.categories.split(',').map(c => c.trim()).filter(c => c) : 
+                (Array.isArray(fullServer.categories) ? fullServer.categories : [])) : [],
+            keywords: fullServer.keywords ? 
+              (typeof fullServer.keywords === 'string' ? 
+                fullServer.keywords.split(',').map(k => k.trim()).filter(k => k) : 
+                (Array.isArray(fullServer.keywords) ? fullServer.keywords : [])) : []
+          };
+          
+          // Transform packages to match expected structure
+          if (transformedServer.packages && Array.isArray(transformedServer.packages)) {
+            transformedServer.packages = transformedServer.packages.map(pkg => ({
+              registry_name: pkg.registry_name,
+              name: pkg.package_name || pkg.name,
+              version: pkg.version,
+              runtime_hint: pkg.runtime_hint,
+              environment_variables: pkg.environment_variables || [],
+              package_arguments: pkg.package_arguments || []
+            }));
+          }
+          
+          transformed.push(transformedServer);
+        }
+      }
+      
+      return transformed;
     },
     
     // Bundle management methods
@@ -282,7 +413,9 @@ document.addEventListener('alpine:init', () => {
     isServerInAnyBundle(server) {
       if (!server) return false;
       const bundles = Alpine.store('bundles').items;
-      return bundles.some(bundle => bundle.servers.includes(server.id));
+      return bundles.some(bundle => 
+        bundle.servers && bundle.servers.some(s => s.serverId === server.id)
+      );
     },
 
     addServerToBundle(bundleId, server) {
@@ -293,14 +426,26 @@ document.addEventListener('alpine:init', () => {
           return;
         }
         
+        // Initialize servers array if needed
+        if (!bundle.servers) {
+          bundle.servers = [];
+        }
+        
         // Check if server already in bundle
-        if (bundle.servers.includes(server.id)) {
+        if (bundle.servers.some(s => s.serverId === server.id)) {
           this.showToast(`${server.name} is already in ${bundle.name}`);
           return;
         }
         
-        // Add server to bundle
-        bundle.servers.push(server.id);
+        // Get selected package index or default
+        const packageIndex = this.selectedPackageIndex[server.id] || 0;
+        
+        // Add server to bundle with package index
+        bundle.servers.push({
+          serverId: server.id,
+          packageIndex: packageIndex,
+          connectionId: null
+        });
         bundle.updated = new Date().toISOString();
         Alpine.store('bundles').save();
         
@@ -360,11 +505,119 @@ document.addEventListener('alpine:init', () => {
     clearConnectionForm() {
       this.newConnectionName = '';
       this.newConnectionServerId = '';
+      this.newConnectionPackageId = '';
       this.newConnectionCredentials = {};
     },
     
+    // Initialize credentials object for selected server (legacy method)
+    initializeCredentials(serverId) {
+      const server = this.servers.find(s => s.id === serverId);
+      if (server && this.serverNeedsCredentials(server)) {
+        const secrets = this.getPackageSecrets(server, 0);
+        const credentials = {};
+        secrets.forEach(secret => {
+          credentials[secret] = '';
+        });
+        this.newConnectionCredentials = credentials;
+      } else {
+        this.newConnectionCredentials = {};
+      }
+    },
+    
+    // Initialize credentials for specific package from database
+    async initializeCredentialsForPackage(serverId, packageKey) {
+      if (!packageKey || packageKey === '') {
+        this.newConnectionCredentials = {};
+        return;
+      }
+      
+      try {
+        // Parse the composite key: serverId::registryName::packageName
+        const [keyServerId, registryName, packageName] = packageKey.split('::');
+        
+        // Get the full server details from database to get packages with environment variables
+        const serverDetails = await database.getServerById(serverId);
+        if (!serverDetails || !serverDetails.packages) {
+          this.newConnectionCredentials = {};
+          return;
+        }
+        
+        const pkg = serverDetails.packages.find(p => 
+          p.registry_name === registryName && p.package_name === packageName
+        );
+        
+        if (!pkg) {
+          this.newConnectionCredentials = {};
+          return;
+        }
+        
+        // Use environment variables from the package data loaded from database
+        if (pkg.environment_variables && pkg.environment_variables.length > 0) {
+          const credentials = {};
+          pkg.environment_variables.forEach(envVar => {
+            credentials[envVar.name] = '';
+          });
+          this.newConnectionCredentials = credentials;
+        } else {
+          this.newConnectionCredentials = {};
+        }
+        
+      } catch (error) {
+        console.error('Failed to get package environment variables:', error);
+        this.newConnectionCredentials = {};
+      }
+    },
+    
+    // Load packages for a server when selected in connection modal
+    async loadServerPackages(serverId) {
+      if (!serverId) {
+        return;
+      }
+      
+      try {
+        // Find the server in our list
+        const serverIndex = this.servers.findIndex(s => s.id === serverId);
+        if (serverIndex === -1) {
+          return;
+        }
+        
+        // Get full server details with packages from database
+        const serverDetails = await database.getServerById(serverId);
+        if (serverDetails && serverDetails.packages) {
+          // Update the server in our list with the full package details
+          this.servers[serverIndex].packages = serverDetails.packages;
+          
+          // Auto-select package if there's only one with environment variables
+          const packagesWithEnvVars = this.getPackagesWithEnvVars(this.servers[serverIndex]);
+          if (packagesWithEnvVars.length === 1) {
+            const pkg = packagesWithEnvVars[0];
+            const packageId = `${serverId}::${pkg.registry_name}::${pkg.package_name}`;
+            
+            // Use $nextTick to ensure DOM is updated before setting the value
+            this.$nextTick(() => {
+              this.newConnectionPackageId = packageId;
+              
+              // Force DOM sync by manually setting the select element value
+              setTimeout(() => {
+                const packageSelect = document.querySelector('select[x-model="newConnectionPackageId"]');
+                if (packageSelect && packageSelect.value !== packageId) {
+                  packageSelect.value = packageId;
+                  packageSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+              }, 50);
+              
+              // Initialize credentials for the auto-selected package
+              this.initializeCredentialsForPackage(serverId, packageId);
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load server packages:', error);
+      }
+    },
+    
     createConnection() {
-      if (!this.newConnectionName?.trim() || !this.newConnectionServerId) {
+      if (!this.newConnectionName?.trim() || !this.newConnectionServerId || !this.newConnectionPackageId) {
         this.showToast('Please fill in all required fields', 'error');
         return;
       }
@@ -373,6 +626,7 @@ document.addEventListener('alpine:init', () => {
         const connection = Alpine.store('connections').create(
           this.newConnectionName.trim(),
           this.newConnectionServerId,
+          this.newConnectionPackageId,
           this.newConnectionCredentials
         );
         
@@ -387,37 +641,52 @@ document.addEventListener('alpine:init', () => {
     },
     
     editConnection(connection) {
-      // For now, just show a simple prompt to edit credentials
-      // TODO: Create a proper edit modal
       const server = this.servers.find(s => s.id === connection.serverId);
-      if (!server || !server.requiredSecrets) {
+      if (!server) {
+        this.showToast('Server not found', 'error');
+        return;
+      }
+      
+      // Check if server needs credentials
+      if (!this.serverNeedsCredentials(server)) {
         this.showToast('No credentials to configure', 'error');
         return;
       }
       
-      const newCredentials = { ...connection.credentials };
-      let hasChanges = false;
+      // Set up editing state
+      this.editingConnection = connection;
+      this.editConnectionName = connection.name; // Add connection name to edit
+      this.editConnectionCredentials = { ...connection.credentials };
+      this.showEditCredentials = {}; // Separate show/hide state for edit modal
+      this.showEditConnectionModal = true;
+    },
+    
+    updateConnection() {
+      if (!this.editingConnection) return;
       
-      for (const secret of server.requiredSecrets) {
-        const currentValue = newCredentials[secret] || '';
-        const newValue = prompt(`Enter ${secret} for ${connection.name}:`, currentValue);
-        
-        if (newValue !== null && newValue !== currentValue) {
-          newCredentials[secret] = newValue;
-          hasChanges = true;
-        }
-      }
-      
-      if (hasChanges) {
-        try {
-          Alpine.store('connections').updateCredentials(connection.id, newCredentials);
-          this.showToast(`Credentials updated for ${connection.name}`);
-        } catch (error) {
-          console.error('Failed to update credentials:', error);
-          this.showToast('Failed to update credentials', 'error');
-        }
+      try {
+        // Update both name and credentials
+        Alpine.store('connections').update(this.editingConnection.id, {
+          name: this.editConnectionName,
+          credentials: this.editConnectionCredentials
+        });
+        this.showToast(`Connection "${this.editConnectionName}" updated successfully!`);
+        this.closeEditConnectionModal();
+      } catch (error) {
+        console.error('Failed to update connection:', error);
+        this.showToast('Failed to update connection', 'error');
       }
     },
+    
+    closeEditConnectionModal() {
+      this.showEditConnectionModal = false;
+      this.editingConnection = null;
+      this.editConnectionName = '';
+      this.editConnectionCredentials = {};
+      this.showEditCredentials = {};
+    },
+    
+    
     
     deleteConnection(connection) {
       if (!confirm(`Are you sure you want to delete "${connection.name}"?`)) return;
@@ -433,6 +702,8 @@ document.addEventListener('alpine:init', () => {
     
     // Server-to-Bundle workflow methods  
     showBundleSelector(server) {
+      // Close server details modal to avoid duplicate text on mobile
+      this.selectedServerForDetails = null;
       this.selectedServer = server;
       this.showBundleSelectorModal = true;
     },
@@ -503,8 +774,22 @@ document.addEventListener('alpine:init', () => {
     },
     
     // Server details functionality
-    viewServerDetails(server) {
-      this.selectedServerForDetails = server;
+    async viewServerDetails(server) {
+      // Load full server details including packages and environment variables
+      try {
+        const fullServer = await database.getServerById(server.id);
+        if (fullServer) {
+          // Transform the server data to match expected format
+          const transformed = await this.transformServersFromDB([fullServer], true);
+          this.selectedServerForDetails = transformed[0];
+          console.log('Server details loaded:', this.selectedServerForDetails);
+        } else {
+          this.selectedServerForDetails = server;
+        }
+      } catch (error) {
+        console.error('Failed to load full server details:', error);
+        this.selectedServerForDetails = server;
+      }
       this.showServerDetailsModal = true;
     },
     
@@ -524,7 +809,11 @@ document.addEventListener('alpine:init', () => {
         const bundle = Alpine.store('bundles').items.find(b => b.id === bundleId);
         if (!bundle) return;
         
-        bundle.servers = bundle.servers.filter(id => id !== serverId);
+        // Handle both old format (string) and new format (object)
+        bundle.servers = bundle.servers.filter(serverEntry => {
+          const id = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+          return id !== serverId;
+        });
         bundle.updated = new Date().toISOString();
         Alpine.store('bundles').save();
         
@@ -532,8 +821,9 @@ document.addEventListener('alpine:init', () => {
         this.showToast(`${server?.name || 'Server'} removed from ${bundle.name}`);
         
         // Update selectedBundle if we're viewing details
+        // Force reactivity by creating a new object reference
         if (this.selectedBundle && this.selectedBundle.id === bundleId) {
-          this.selectedBundle = bundle;
+          this.selectedBundle = { ...bundle };
         }
       } catch (error) {
         console.error('Failed to remove server from bundle:', error);
@@ -542,9 +832,11 @@ document.addEventListener('alpine:init', () => {
     },
     
     getBundleServers(bundle) {
-      return (bundle.servers || []).map(serverId => 
-        this.servers.find(s => s.id === serverId)
-      ).filter(Boolean);
+      return (bundle.servers || []).map(serverEntry => {
+        // Handle both old format (string) and new format (object)
+        const serverId = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+        return this.servers.find(s => s.id === serverId);
+      }).filter(Boolean);
     },
     
     // Connection attachment methods for bundle details
@@ -591,44 +883,136 @@ document.addEventListener('alpine:init', () => {
     },
     
     
+    // Binary packing utilities for ultra-compact URLs
+    packBundle(bundle) {
+      try {
+        // Truncate name if too long (max 50 chars for reasonable URLs)
+        const name = (bundle.name || '').substring(0, 50);
+        const nameBytes = new TextEncoder().encode(name);
+        
+        if (nameBytes.length > 255) {
+          throw new Error('Bundle name too long after UTF-8 encoding');
+        }
+        
+        // Get server IDs (use first 8 chars of UUID)
+        const serverIds = (bundle.servers || []).map(serverEntry => {
+          const serverId = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+          return serverId.substring(0, 8); // First 8 hex chars
+        });
+        
+        // Calculate total size: 1 byte name length + 4 bytes timestamp + name + 4 bytes per server
+        const totalSize = 1 + 4 + nameBytes.length + (serverIds.length * 4);
+        const buffer = new ArrayBuffer(totalSize);
+        const view = new DataView(buffer);
+        const bytes = new Uint8Array(buffer);
+        
+        let offset = 0;
+        
+        // Write name length (1 byte)
+        view.setUint8(offset, nameBytes.length);
+        offset += 1;
+        
+        // Write shared timestamp (4 bytes as Unix time)
+        const sharedTime = Math.floor(Date.now() / 1000); // Unix timestamp
+        view.setUint32(offset, sharedTime, false); // false = big-endian
+        offset += 4;
+        
+        // Write name bytes
+        bytes.set(nameBytes, offset);
+        offset += nameBytes.length;
+        
+        // Write server IDs (4 bytes each as big-endian unsigned int)
+        for (const serverId of serverIds) {
+          const serverInt = parseInt(serverId, 16);
+          view.setUint32(offset, serverInt, false); // false = big-endian
+          offset += 4;
+        }
+        
+        return bytes;
+        
+      } catch (error) {
+        console.error('Failed to pack bundle:', error);
+        throw error;
+      }
+    },
+    
+    unpackBundle(binaryData) {
+      try {
+        const view = new DataView(binaryData.buffer);
+        let offset = 0;
+        
+        // Read name length (1 byte)
+        const nameLength = view.getUint8(offset);
+        offset += 1;
+        
+        // Read shared timestamp (4 bytes)
+        const sharedTime = view.getUint32(offset, false); // false = big-endian
+        offset += 4;
+        
+        // Read name
+        const nameBytes = binaryData.slice(offset, offset + nameLength);
+        const name = new TextDecoder().decode(nameBytes);
+        offset += nameLength;
+        
+        // Read server IDs (4 bytes each)
+        const servers = [];
+        while (offset < binaryData.length) {
+          const serverInt = view.getUint32(offset, false); // false = big-endian
+          const serverId = serverInt.toString(16).padStart(8, '0');
+          servers.push(serverId);
+          offset += 4;
+        }
+        
+        return {
+          name: name,
+          sharedTime: sharedTime,
+          servers: servers
+        };
+        
+      } catch (error) {
+        console.error('Failed to unpack bundle:', error);
+        throw error;
+      }
+    },
+    
     // Sharing methods
     shareBundle(bundle) {
-      const shareData = {
-        name: bundle.name,
-        description: bundle.description,
-        servers: bundle.servers,
-        metadata: {
-          ...bundle.metadata,
-          shared: new Date().toISOString()
-        }
-      };
-      
       try {
-        const encoded = btoa(JSON.stringify(shareData));
-        const url = `${window.location.origin}${window.location.pathname}#/bundle/${encoded}`;
+        // Pack bundle into binary format (ultra-compact)
+        const packedData = this.packBundle(bundle);
+        
+        // Convert to URL-safe Base64 (remove padding for shorter URLs)
+        const base64 = btoa(String.fromCharCode(...packedData));
+        const urlSafeBase64 = base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        
+        // Create ultra-short preview URL
+        const baseUrl = `${window.location.origin}${window.location.pathname.replace('index.html', '')}`;
+        const previewUrl = `${baseUrl}preview.html#/${urlSafeBase64}`;
         
         // Copy to clipboard
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(url).then(() => {
-            this.showToast('Bundle URL copied to clipboard!');
+          navigator.clipboard.writeText(previewUrl).then(() => {
+            this.showToast('Link copied to clipboard!');
           }).catch(() => {
-            this.showToast('Failed to copy URL', 'error');
+            this.showToast('Failed to copy link', 'error');
           });
         } else {
           // Fallback for older browsers
-          this.showToast('Share URL: ' + url);
+          this.showToast('Share URL: ' + previewUrl);
         }
         
         // Use native share API if available (mobile)
         if (navigator.share) {
           navigator.share({
             title: `MCP Bundle: ${bundle.name}`,
-            text: bundle.description,
-            url: url
+            text: bundle.description || `Check out this MCP bundle with ${bundle.servers?.length || 0} servers`,
+            url: previewUrl
           }).catch(error => {
             console.log('Native share cancelled or failed:', error);
           });
         }
+        
+        console.log(`Bundle URL length: ${previewUrl.length} chars (was ~600 chars)`);
         
       } catch (error) {
         console.error('Failed to share bundle:', error);
@@ -636,10 +1020,64 @@ document.addEventListener('alpine:init', () => {
       }
     },
     
+    async selectCategory(categoryName) {
+      this.selectedCategory = categoryName;
+      this.currentPage = 1; // Reset to first page
+      this.loading = true;
+      
+      try {
+        let dbServers;
+        if (categoryName === 'All Servers') {
+          // Load all servers (no limit)
+          dbServers = await database.getServers(10000);
+        } else {
+          // Load servers by category
+          dbServers = await database.getServersByCategory(categoryName, 10000);
+        }
+        
+        // Transform database results to match expected format
+        this.servers = await this.transformServersFromDB(dbServers);
+        console.log(`Loaded ${this.servers.length} servers for category: ${categoryName}`);
+      } catch (error) {
+        console.error('Failed to load servers by category:', error);
+        this.showToast('Failed to load servers', 'error');
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    // Pagination methods
+    nextPage() {
+      if (this.currentPage < this.totalPages) {
+        this.currentPage++;
+      }
+    },
+    
+    previousPage() {
+      if (this.currentPage > 1) {
+        this.currentPage--;
+      }
+    },
+    
+    goToPage(page) {
+      if (page >= 1 && page <= this.totalPages) {
+        this.currentPage = page;
+      }
+    },
+    
     async importFromURL(encodedData) {
       try {
-        const decoded = atob(encodedData);
-        const sharedBundle = JSON.parse(decoded);
+        const decoded = atob(encodedData.replace(/-/g, '+').replace(/_/g, '/'));
+        
+        let sharedBundle;
+        try {
+          // Try parsing as JSON first (old format)
+          sharedBundle = JSON.parse(decoded);
+        } catch (jsonError) {
+          // If JSON parsing fails, try binary format
+          const binaryData = new Uint8Array(decoded.split('').map(char => char.charCodeAt(0)));
+          sharedBundle = this.unpackBundle(binaryData);
+        }
         
         // Validate bundle structure
         if (!sharedBundle.name || !Array.isArray(sharedBundle.servers)) {
@@ -647,19 +1085,34 @@ document.addEventListener('alpine:init', () => {
         }
         
         // Validate that servers exist in our catalogue
-        const validServers = sharedBundle.servers.filter(serverId => 
-          this.servers.find(s => s.id === serverId)
-        );
+        // Handle both old format (string IDs) and new format (server objects)
+        // Also handle truncated IDs from binary packing (first 8 chars)
+        const validServers = sharedBundle.servers.filter(serverEntry => {
+          const serverId = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+          return this.servers.find(s => s.id === serverId || s.id.startsWith(serverId));
+        });
         
         if (validServers.length === 0) {
           throw new Error('No valid servers found in shared bundle');
         }
         
+        // Map server IDs to full server objects
+        const serverObjects = validServers.map(serverEntry => {
+          const serverId = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+          return this.servers.find(s => s.id === serverId || s.id.startsWith(serverId));
+        }).filter(Boolean);
+        
         // Show preview before importing
         this.importPreview = {
           ...sharedBundle,
-          servers: validServers,
-          invalidServers: sharedBundle.servers.filter(s => !validServers.includes(s))
+          servers: serverObjects,
+          invalidServers: sharedBundle.servers.filter(serverEntry => {
+            const serverId = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+            return !validServers.some(validEntry => {
+              const validId = typeof validEntry === 'string' ? validEntry : validEntry.serverId;
+              return validId === serverId;
+            });
+          })
         };
         this.currentView = 'import-preview';
         
@@ -684,8 +1137,10 @@ document.addEventListener('alpine:init', () => {
         );
         
         // Add valid servers
-        this.importPreview.servers.forEach(serverId => {
-          Alpine.store('bundles').addServer(serverId);
+        this.importPreview.servers.forEach(serverEntry => {
+          const serverId = typeof serverEntry === 'string' ? serverEntry : (serverEntry.serverId || serverEntry.id);
+          const packageIndex = typeof serverEntry === 'object' ? serverEntry.packageIndex : 0;
+          Alpine.store('bundles').addServer(bundle.id, serverId, packageIndex);
         });
         
         this.showToast(`Bundle "${bundle.name}" imported successfully!`);
@@ -735,40 +1190,45 @@ document.addEventListener('alpine:init', () => {
       const mcpServers = {};
       let hasRealCredentials = false;
       
-      bundle.servers.forEach(serverId => {
+      bundle.servers.forEach(serverEntry => {
+        // Handle both old format (string) and new format (object)
+        const serverId = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+        const packageIndex = typeof serverEntry === 'object' ? serverEntry.packageIndex : 0;
+        
         const server = this.servers.find(s => s.id === serverId);
-        if (server && server.config) {
-          // Start with base config
-          const serverConfig = {
-            command: server.config.command,
-            args: server.config.args,
-            env: { ...server.config.env || {} }
-          };
-          
-          // Check if this server has an attached connection
-          const attachedConnection = Alpine.store('bundles').getServerConnection(bundle.id, serverId);
-          
-          if (attachedConnection && attachedConnection.credentials) {
-            // Use credentials from attached connection
-            Object.keys(attachedConnection.credentials).forEach(key => {
-              if (attachedConnection.credentials[key] && attachedConnection.credentials[key].trim()) {
-                serverConfig.env[key] = attachedConnection.credentials[key];
-                hasRealCredentials = true;
-              }
-            });
-          } else {
-            // No attached connection - use placeholder format for required secrets
-            if (server.requiredSecrets && server.requiredSecrets.length > 0) {
-              server.requiredSecrets.forEach(secret => {
-                if (!serverConfig.env[secret]) {
-                  serverConfig.env[secret] = `\${${secret}}`;
-                }
-              });
+        if (!server) return;
+        
+        // Get the selected package
+        const pkg = serverUtils.getPackageByIndex(server, packageIndex);
+        if (!pkg) return;
+        
+        // Build config from package
+        const serverConfig = serverUtils.buildPackageConfig(pkg);
+        
+        // Check if this server has an attached connection
+        const attachedConnection = Alpine.store('bundles').getServerConnection(bundle.id, serverId);
+        
+        if (attachedConnection && attachedConnection.credentials) {
+          // Use credentials from attached connection
+          Object.keys(attachedConnection.credentials).forEach(key => {
+            if (attachedConnection.credentials[key] && attachedConnection.credentials[key].trim()) {
+              serverConfig.env[key] = attachedConnection.credentials[key];
+              hasRealCredentials = true;
             }
-          }
-          
-          mcpServers[serverId] = serverConfig;
+          });
+        } else {
+          // No attached connection - use placeholder format for required secrets
+          const requiredSecrets = serverUtils.getRequiredSecrets(pkg);
+          requiredSecrets.forEach(secret => {
+            if (!serverConfig.env[secret]) {
+              serverConfig.env[secret] = `\${${secret}}`;
+            }
+          });
         }
+        
+        // Use sanitized server name as key in the config
+        const sanitizedName = server.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        mcpServers[sanitizedName] = serverConfig;
       });
       
       const claudeConfig = { mcpServers };
@@ -880,88 +1340,148 @@ document.addEventListener('alpine:init', () => {
       URL.revokeObjectURL(url);
     },
     
-    // Credential management methods
-    async unlockCredentials() {
-      const passphrase = prompt('Enter your credentials passphrase:');
-      if (!passphrase) return;
-      
-      try {
-        await Alpine.store('credentials').unlock(passphrase);
-        this.showToast('Credentials unlocked successfully');
-      } catch (error) {
-        console.error('Failed to unlock credentials:', error);
-        this.showToast('Invalid passphrase', 'error');
-      }
-    },
     
-    lockCredentials() {
-      Alpine.store('credentials').lock();
-      this.showToast('Credentials locked');
+    // New server utils - wrappers for serverUtils
+    serverNeedsCredentials(server) {
+      return serverUtils.serverNeedsCredentials(server);
     },
-    
-    async setCredential(serverId, secretName) {
-      if (!Alpine.store('credentials').isUnlocked) {
-        this.showToast('Please unlock credentials first', 'error');
-        return;
-      }
+
+    // Check if the selected package for a server needs credentials
+    selectedPackageNeedsCredentials(server) {
+      if (!server || !server.packages) return false;
       
-      const value = prompt(`Enter ${secretName} for ${serverId}:`);
-      if (!value) return;
+      const packageIndex = this.selectedPackageIndex[server.id] || 0;
+      const pkg = serverUtils.getPackageByIndex(server, packageIndex);
       
-      try {
-        Alpine.store('credentials').set(serverId, {
-          ...Alpine.store('credentials').get(serverId),
-          [secretName]: value
-        });
-        
-        // Save encrypted credentials
-        const passphrase = prompt('Enter passphrase to save:');
-        if (passphrase) {
-          await Alpine.store('credentials').save(
-            Alpine.store('credentials').data,
-            passphrase
-          );
-          this.showToast('Credential saved securely');
+      if (!pkg || !pkg.environment_variables) return false;
+      
+      return pkg.environment_variables.some(v => {
+        // If explicitly marked as required and secret, use that
+        if (v.is_required === 1 && v.is_secret === 1) {
+          return true;
         }
-      } catch (error) {
-        console.error('Failed to save credential:', error);
-        this.showToast('Failed to save credential', 'error');
-      }
+        // Otherwise, check name patterns for likely secrets
+        const upper = v.name.toUpperCase();
+        const secretPatterns = [
+          'KEY', 'TOKEN', 'SECRET', 'PASSWORD', 'PASS', 'PWD',
+          'AUTH', 'CREDENTIAL', 'API', 'PRIVATE', 'ACCESS'
+        ];
+        return secretPatterns.some(pattern => upper.includes(pattern));
+      });
     },
-    
-    removeCredential(serverId, secretName) {
-      if (!Alpine.store('credentials').isUnlocked) {
-        this.showToast('Please unlock credentials first', 'error');
-        return;
-      }
-      
-      if (!confirm(`Remove ${secretName} for ${serverId}?`)) return;
-      
-      try {
-        const serverCreds = Alpine.store('credentials').get(serverId) || {};
-        delete serverCreds[secretName];
-        Alpine.store('credentials').set(serverId, serverCreds);
-        this.showToast('Credential removed');
-      } catch (error) {
-        console.error('Failed to remove credential:', error);
-        this.showToast('Failed to remove credential', 'error');
-      }
-    },
-    
-    getCredentialStatus(serverId) {
-      if (!Alpine.store('credentials').isUnlocked) return 'locked';
-      
-      const server = this.servers.find(s => s.id === serverId);
-      if (!server || !server.requiredSecrets || server.requiredSecrets.length === 0) {
-        return 'none-required';
-      }
-      
-      const serverCreds = Alpine.store('credentials').get(serverId) || {};
-      const hasAllRequired = server.requiredSecrets.every(secret => 
-        serverCreds[secret] && serverCreds[secret].trim()
+
+    serverHasEnvVars(server) {
+      if (!server.packages) return false;
+      return server.packages.some(pkg => 
+        pkg.environment_variables && pkg.environment_variables.length > 0
       );
+    },
+    
+    getPackageDisplayName(pkg) {
+      return serverUtils.getPackageDisplayName(pkg);
+    },
+    
+    getSelectedPackage(server) {
+      if (!server || !server.id) return null;
+      const index = this.selectedPackageIndex[server.id] || 0;
+      return serverUtils.getPackageByIndex(server, index);
+    },
+    
+    // Generate package configuration preview
+    getPackageConfigPreview(server) {
+      const pkg = this.getSelectedPackage(server);
+      if (!pkg || !server) return {};
       
-      return hasAllRequired ? 'complete' : 'incomplete';
+      const config = serverUtils.buildPackageConfig(pkg);
+      
+      // For remote packages, use different top-level structure if needed
+      if (pkg.registry_name === 'remote') {
+        // Remote packages still use mcpServers but with type/url structure
+        return {
+          mcpServers: {
+            [server.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')]: config
+          }
+        };
+      }
+      
+      // For file-based packages (npm, pypi, docker), ensure env vars have placeholders
+      if (config.env) {
+        const requiredSecrets = serverUtils.getRequiredSecrets(pkg);
+        requiredSecrets.forEach(secret => {
+          if (!config.env[secret]) {
+            config.env[secret] = `\${${secret}}`;
+          }
+        });
+      }
+      
+      return {
+        mcpServers: {
+          [server.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')]: config
+        }
+      };
+    },
+
+    // Check if a server is official (based on repository ownership)
+    isOfficialServer(server) {
+      if (!server || !server.repository_url) return false;
+      
+      // Define official organizations/users that maintain official MCP servers
+      const officialOrgs = [
+        'modelcontextprotocol',
+        'anthropics', 
+        'github',
+        'microsoft',
+        'google',
+        'googleapis',
+        'awslabs',
+        'cloudflare',
+        'supabase',
+        'supabase-community'
+      ];
+      
+      // Extract owner from repository URL
+      const repoPath = server.repository_path || server.repository_url?.replace('https://github.com/', '');
+      if (!repoPath) return false;
+      
+      const owner = repoPath.split('/')[0]?.toLowerCase();
+      return officialOrgs.includes(owner);
+    },
+    
+    getPackageSecrets(server, packageIndex) {
+      const pkg = serverUtils.getPackageByIndex(server, packageIndex || 0);
+      return serverUtils.getRequiredSecrets(pkg);
+    },
+    
+    formatServerName(name) {
+      return serverUtils.formatServerName(name);
+    },
+    
+    getPackageEnvVars(server, packageIndex) {
+      const pkg = serverUtils.getPackageByIndex(server, packageIndex || 0);
+      return serverUtils.getPackageEnvVars(pkg);
+    },
+    
+    cleanParameterName(name) {
+      if (!name) return name;
+      // Remove content in parentheses, including the parentheses themselves
+      return name.replace(/\s*\([^)]*\)\s*/g, '').trim();
+    },
+    
+    // Filter packages to only show those with environment variables
+    getPackagesWithEnvVars(server) {
+      if (!server || !server.packages) return [];
+      return server.packages.filter(pkg => {
+        return pkg.environment_variables && pkg.environment_variables.length > 0;
+      });
+    },
+    
+    // Filter servers to only show those with at least one package that has environment variables
+    getServersWithEnvVars(servers) {
+      if (!servers) return [];
+      return servers.filter(server => {
+        const packagesWithEnvVars = this.getPackagesWithEnvVars(server);
+        return packagesWithEnvVars.length > 0;
+      });
     },
     
     // Settings methods
@@ -1137,6 +1657,9 @@ document.addEventListener('alpine:init', () => {
       } else if (hash === '#/bundles') {
         // Bundles list view
         this.currentView = 'bundles';
+      } else if (hash === '#/connections') {
+        // Connections view
+        this.currentView = 'connections';
       } else if (hash === '#/settings') {
         // Settings view
         this.currentView = 'settings';

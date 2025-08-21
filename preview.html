@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="bundle-title">MCP Bundle Preview</title>
+    
+    <!-- Basic Meta Tags -->
+    <meta name="description" id="bundle-description" content="Preview an MCP server bundle">
+    <meta name="author" content="MCP Bundler">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" id="og-url" content="">
+    <meta property="og:title" id="og-title" content="MCP Bundle Preview">
+    <meta property="og:description" id="og-description" content="Preview an MCP server bundle">
+    <meta property="og:image" id="og-image" content="">
+    <meta property="og:site_name" content="MCP Bundler">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" id="twitter-url" content="">
+    <meta property="twitter:title" id="twitter-title" content="MCP Bundle Preview">
+    <meta property="twitter:description" id="twitter-description" content="Preview an MCP server bundle">
+    <meta property="twitter:image" id="twitter-image" content="">
+    
+    <!-- oEmbed Discovery -->
+    <link rel="alternate" type="application/json+oembed" id="oembed-json" href="">
+    <link rel="alternate" type="text/xml+oembed" id="oembed-xml" href="">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="./icons/package.svg">
+    
+    <!-- Tailwind CSS -->
+    <link href="./css/tailwind.css" rel="stylesheet">
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- SQL.js for SQLite database support -->
+    <script src="https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/sql-wasm.js"></script>
+    
+    <!-- Database and utilities - load as modules -->
+    <script type="module">
+        // Import modules and make them available globally
+        import database from './js/database.js';
+        import * as serverUtils from './js/serverUtils.js';
+        
+        // Make available globally for the preview page
+        window.database = database;
+        window.serverUtils = serverUtils;
+    </script>
+    
+    <style>
+        .bundle-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .server-card {
+            transition: all 0.2s ease;
+        }
+        .server-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div x-data="bundlePreview()" x-init="init()" class="min-h-screen">
+        <!-- Loading State -->
+        <div x-show="loading" class="min-h-screen flex items-center justify-center">
+            <div class="text-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p class="text-gray-600">Loading bundle preview...</p>
+            </div>
+        </div>
+        
+        <!-- Error State -->
+        <div x-show="error" class="min-h-screen flex items-center justify-center">
+            <div class="text-center max-w-md mx-auto p-6">
+                <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900 mb-2">Bundle Not Found</h1>
+                <p class="text-gray-600 mb-6" x-text="errorMessage"></p>
+                <a href="/" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z"></path>
+                    </svg>
+                    Browse MCP Servers
+                </a>
+            </div>
+        </div>
+        
+        <!-- Bundle Preview -->
+        <div x-show="!loading && !error && bundle" class="max-w-6xl mx-auto p-6 bg-gray-50 min-h-screen">
+            <!-- Header -->
+            <div class="mb-8">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <a href="/" 
+                           class="flex items-center justify-center p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                           title="Browse servers">
+                            <img src="./icons/back.svg" class="w-5 h-5" alt="Back">
+                        </a>
+                        <div class="min-w-0 flex-1">
+                            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 truncate" x-text="bundle?.name || 'Bundle Preview'"></h1>
+                            <p class="text-gray-600 mt-1" x-text="bundle?.description || ''" x-show="bundle?.description"></p>
+                        </div>
+                    </div>
+                    <div class="flex gap-3 shrink-0">
+                        <button @click="importBundle()" 
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
+                                title="Import this bundle">
+                            <img src="./icons/download.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Import">
+                            Import Bundle
+                        </button>
+                        <button @click="copyLink()" 
+                                class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
+                                title="Copy share link">
+                            <img src="./icons/share.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Share">
+                            Copy Link
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bundle Info Cards -->
+            <div class="grid grid-cols-3 gap-4 md:gap-6 mb-8">
+                <div class="bg-white rounded-xl border border-gray-200 p-4 md:p-6 text-center">
+                    <div class="inline-flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg mb-3">
+                        <img src="./icons/server.svg" class="w-6 h-6 text-blue-600" alt="Server">
+                    </div>
+                    <h3 class="text-sm font-medium text-gray-500 mb-1">Servers</h3>
+                    <p class="text-3xl font-bold text-gray-900" x-text="validServers?.length || 0"></p>
+                </div>
+                <div class="bg-white rounded-xl border border-gray-200 p-4 md:p-6 text-center">
+                    <div class="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-lg mb-3">
+                        <img src="./icons/calendar.svg" class="w-6 h-6 text-green-600" alt="Calendar">
+                    </div>
+                    <h3 class="text-sm font-medium text-gray-500 mb-1">Shared</h3>
+                    <p class="text-lg font-semibold text-gray-900" x-text="formatDate(bundle?.sharedTime) || 'Unknown'"></p>
+                </div>
+                <div class="bg-white rounded-xl border border-gray-200 p-4 md:p-6 text-center">
+                    <div class="inline-flex items-center justify-center w-12 h-12 bg-purple-100 rounded-lg mb-3">
+                        <img src="./icons/package.svg" class="w-6 h-6 text-purple-600" alt="Bundle">
+                    </div>
+                    <h3 class="text-sm font-medium text-gray-500 mb-1">Type</h3>
+                    <p class="text-lg font-semibold text-gray-900">Shared Bundle</p>
+                </div>
+            </div>
+            
+            <!-- Servers List -->
+            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div class="px-6 py-5 border-b border-gray-200">
+                    <div class="flex items-center">
+                        <div class="inline-flex items-center justify-center w-10 h-10 bg-gray-100 rounded-lg mr-3">
+                            <img src="./icons/server.svg" class="w-5 h-5 text-gray-600" alt="Servers">
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">Servers in Bundle</h3>
+                            <p class="text-sm text-gray-600">Preview the servers included in this bundle</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="divide-y divide-gray-200" x-show="validServers && validServers.length > 0">
+                    <!-- Server Cards -->
+                    <template x-for="server in validServers" :key="server.id">
+                        <div class="p-6">
+                            <div class="flex items-start justify-between mb-4">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <h4 class="text-lg font-semibold text-gray-900" x-text="formatServerName(server.name)"></h4>
+                                        <span x-show="isOfficialServer(server)" 
+                                              class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                            <img src="./icons/official.svg" class="w-3 h-3 mr-1" alt="Official">
+                                            Official
+                                        </span>
+                                    </div>
+                                    <p class="text-gray-600 mb-3" x-text="server.description"></p>
+                                    
+                                    <!-- Package Info -->
+                                    <div class="mb-4" x-show="getSelectedPackage(server)">
+                                        <span class="text-sm text-gray-500">Package: </span>
+                                        <span class="text-sm font-medium" x-text="getPackageDisplayName(getSelectedPackage(server))"></span>
+                                    </div>
+                                    
+                                    <!-- Repository Link -->
+                                    <div x-show="server.repository_path" class="mb-4">
+                                        <a :href="'https://github.com/' + server.repository_path" 
+                                           target="_blank" 
+                                           class="inline-flex items-center text-blue-600 hover:text-blue-800 text-sm">
+                                            View source code →
+                                        </a>
+                                    </div>
+                                </div>
+                                
+                                <!-- Server Stats -->
+                                <div class="ml-6 text-right">
+                                    <div x-show="server.stars" class="flex items-center gap-1 text-sm text-gray-500 mb-1">
+                                        <img src="./icons/star.svg" class="w-4 h-4" alt="Stars">
+                                        <span x-text="server.stars"></span>
+                                    </div>
+                                    <div x-show="server.language" class="text-sm text-gray-500">
+                                        <span x-text="server.language"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Empty State -->
+                <div x-show="!validServers || validServers.length === 0" class="p-12 text-center">
+                    <img src="./icons/package.svg" class="w-16 h-16 mx-auto mb-4 opacity-40" alt="Empty">
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">No servers in bundle</h3>
+                    <p class="text-gray-600">This bundle doesn't contain any servers that are currently available in our catalogue.</p>
+                    <a href="/" 
+                       class="inline-flex items-center mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        <img src="./icons/add.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Add">
+                        Browse Catalogue
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Toast Notification -->
+        <div x-show="toast.show" 
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 transform translate-y-2"
+             x-transition:enter-end="opacity-100 transform translate-y-0"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100 transform translate-y-0"
+             x-transition:leave-end="opacity-0 transform translate-y-2"
+             class="fixed bottom-4 right-4 z-50">
+            <div :class="toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'" 
+                 class="text-white px-6 py-3 rounded-lg shadow-lg flex items-center">
+                <svg x-show="toast.type === 'success'" class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <svg x-show="toast.type === 'error'" class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+                <span x-text="toast.message"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function bundlePreview() {
+            return {
+                loading: true,
+                error: false,
+                errorMessage: '',
+                bundle: null,
+                validServers: [],
+                toast: {
+                    show: false,
+                    message: '',
+                    type: 'success'
+                },
+
+                // Binary unpacking utilities
+                unpackBundle(binaryData) {
+                    try {
+                        const view = new DataView(binaryData.buffer);
+                        let offset = 0;
+                        
+                        // Read name length (1 byte)
+                        const nameLength = view.getUint8(offset);
+                        offset += 1;
+                        
+                        // Read shared timestamp (4 bytes)
+                        const sharedTime = view.getUint32(offset, false); // false = big-endian
+                        offset += 4;
+                        
+                        // Read name
+                        const nameBytes = binaryData.slice(offset, offset + nameLength);
+                        const name = new TextDecoder().decode(nameBytes);
+                        offset += nameLength;
+                        
+                        // Read server IDs (4 bytes each)
+                        const servers = [];
+                        while (offset < binaryData.length) {
+                            const serverInt = view.getUint32(offset, false); // false = big-endian
+                            const serverId = serverInt.toString(16).padStart(8, '0');
+                            servers.push(serverId);
+                            offset += 4;
+                        }
+                        
+                        return {
+                            name: name,
+                            sharedTime: sharedTime,
+                            servers: servers
+                        };
+                        
+                    } catch (error) {
+                        console.error('Failed to unpack bundle:', error);
+                        throw error;
+                    }
+                },
+
+                async init() {
+                    try {
+                        // Get bundle data from URL hash
+                        const hash = window.location.hash;
+                        if (!hash.startsWith('#/')) {
+                            throw new Error('Invalid bundle URL format');
+                        }
+
+                        const encodedData = hash.replace('#/', '');
+                        if (!encodedData) {
+                            throw new Error('No bundle data provided');
+                        }
+
+                        // Decode bundle data (try binary format first, then JSON fallback)
+                        try {
+                            // Convert URL-safe Base64 back to standard Base64
+                            const standardBase64 = encodedData.replace(/-/g, '+').replace(/_/g, '/');
+                            // Add padding if needed
+                            const paddedBase64 = standardBase64 + '=='.slice(0, (4 - standardBase64.length % 4) % 4);
+                            
+                            // Try to decode as binary first
+                            const binaryString = atob(paddedBase64);
+                            const binaryData = new Uint8Array(binaryString.length);
+                            for (let i = 0; i < binaryString.length; i++) {
+                                binaryData[i] = binaryString.charCodeAt(i);
+                            }
+                            
+                            // Attempt binary unpacking
+                            this.bundle = this.unpackBundle(binaryData);
+                            console.log('Successfully decoded binary bundle data');
+                            
+                        } catch (binaryError) {
+                            // Fall back to JSON decoding (for old URLs)
+                            console.log('Binary decoding failed, trying JSON:', binaryError.message);
+                            const decoded = atob(encodedData);
+                            this.bundle = JSON.parse(decoded);
+                            console.log('Successfully decoded JSON bundle data');
+                        }
+
+                        // Validate bundle structure
+                        if (!this.bundle.name || !Array.isArray(this.bundle.servers)) {
+                            throw new Error('Invalid bundle format');
+                        }
+
+                        // Load server catalogue to validate servers
+                        await this.loadServers();
+
+                        // Update page metadata
+                        this.updatePageMetadata();
+
+                    } catch (error) {
+                        console.error('Failed to load bundle preview:', error);
+                        this.error = true;
+                        this.errorMessage = error.message || 'Failed to load bundle';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async loadServers() {
+                    try {
+                        // Wait for database to be available
+                        if (typeof window.database === 'undefined') {
+                            // Wait a bit for modules to load
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        }
+                        
+                        if (typeof window.database !== 'undefined') {
+                            // Initialize database and load servers
+                            await window.database.init();
+                            
+                            // Get all servers from database
+                            const allServers = await window.database.getServers(10000);
+                            
+                            // Transform database results to match expected format
+                            const transformedServers = await this.transformServersFromDB(allServers);
+                            
+                            // Validate that servers exist in our catalogue
+                            // Handle both full UUIDs and truncated IDs (binary packing uses first 8 chars)
+                            this.validServers = this.bundle.servers.filter(serverEntry => {
+                                const serverId = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+                                return transformedServers.find(s => s.id === serverId || s.id.startsWith(serverId));
+                            }).map(serverEntry => {
+                                const serverId = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+                                return transformedServers.find(s => s.id === serverId || s.id.startsWith(serverId));
+                            });
+                        } else {
+                            console.warn('Database not available');
+                            this.validServers = [];
+                        }
+                        
+                    } catch (error) {
+                        console.error('Failed to load servers from database:', error);
+                        this.validServers = [];
+                    }
+                },
+
+                // Transform database results to match the expected format (simplified version)
+                async transformServersFromDB(servers) {
+                    const transformed = [];
+                    
+                    for (const server of servers) {
+                        const transformedServer = {
+                            id: server.id,
+                            name: server.name,
+                            display_name: server.display_name || server.name,
+                            description: server.description,
+                            repository_path: server.repository_url ? 
+                                server.repository_url.replace('https://github.com/', '') : null,
+                            stars: server.stars,
+                            language: server.language,
+                            packages: server.packages || []
+                        };
+                        
+                        // Transform packages to match expected structure
+                        if (transformedServer.packages && Array.isArray(transformedServer.packages)) {
+                            transformedServer.packages = transformedServer.packages.map(pkg => ({
+                                registry_name: pkg.registry_name,
+                                name: pkg.package_name || pkg.name,
+                                version: pkg.version,
+                                runtime_hint: pkg.runtime_hint
+                            }));
+                        }
+                        
+                        transformed.push(transformedServer);
+                    }
+                    
+                    return transformed;
+                },
+
+                updatePageMetadata() {
+                    const title = `${this.bundle.name} - MCP Bundle`;
+                    const description = this.bundle.description || `MCP bundle with ${this.validServers.length} servers`;
+                    const url = window.location.href;
+
+                    // Update title and meta tags
+                    document.title = title;
+                    document.getElementById('bundle-title').textContent = title;
+                    document.getElementById('bundle-description').setAttribute('content', description);
+                    
+                    // Open Graph
+                    document.getElementById('og-title').setAttribute('content', title);
+                    document.getElementById('og-description').setAttribute('content', description);
+                    document.getElementById('og-url').setAttribute('content', url);
+                    
+                    // Twitter
+                    document.getElementById('twitter-title').setAttribute('content', title);
+                    document.getElementById('twitter-description').setAttribute('content', description);
+                    document.getElementById('twitter-url').setAttribute('content', url);
+                    
+                    // Update oEmbed discovery links
+                    const currentUrl = window.location.href;
+                    const encodedUrl = encodeURIComponent(currentUrl);
+                    
+                    const oembedJson = document.getElementById('oembed-json');
+                    const oembedXml = document.getElementById('oembed-xml');
+                    
+                    if (oembedJson) {
+                        oembedJson.href = `./oembed.json?url=${encodedUrl}&format=json`;
+                    }
+                    if (oembedXml) {
+                        oembedXml.href = `./oembed.xml?url=${encodedUrl}&format=xml`;
+                    }
+                },
+
+                importBundle() {
+                    // Redirect to main app with import data
+                    const mainAppUrl = window.location.origin + window.location.pathname.replace('preview.html', '');
+                    window.location.href = `${mainAppUrl}#/bundle/${window.location.hash.replace('#/', '')}`;
+                },
+
+                copyLink() {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(window.location.href).then(() => {
+                            this.showToast('Link copied to clipboard!');
+                        }).catch(() => {
+                            this.showToast('Failed to copy link', 'error');
+                        });
+                    } else {
+                        this.showToast('Copy not supported in this browser', 'error');
+                    }
+                },
+
+                showToast(message, type = 'success') {
+                    this.toast = { show: true, message, type };
+                    setTimeout(() => {
+                        this.toast.show = false;
+                    }, 3000);
+                },
+
+                formatDate(dateInput) {
+                    if (!dateInput) return '';
+                    try {
+                        // Handle Unix timestamp (number) or date string
+                        const date = typeof dateInput === 'number' 
+                            ? new Date(dateInput * 1000) // Convert Unix timestamp to milliseconds
+                            : new Date(dateInput);
+                        return date.toLocaleDateString();
+                    } catch {
+                        return '';
+                    }
+                },
+
+                isOfficialServer(server) {
+                    if (!server || !server.repository_path) return false;
+                    const officialOrgs = ['github', 'microsoft', 'google', 'anthropics', 'modelcontextprotocol'];
+                    const owner = server.repository_path.split('/')[0]?.toLowerCase();
+                    return officialOrgs.includes(owner);
+                },
+
+                getSelectedPackage(server) {
+                    return server?.packages?.[0] || null;
+                },
+
+                getPackageDisplayName(pkg) {
+                    if (!pkg) return '';
+                    return pkg.package_name || pkg.name || pkg.registry_name || 'Unknown Package';
+                },
+
+                formatServerName(name) {
+                    if (!name) return '';
+                    // Clean up server names for display
+                    return name.replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                }
+            };
+        }
+    </script>
+</body>
+</html>

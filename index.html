@@ -97,12 +97,9 @@
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     
     <!-- Preload critical resources -->
-    <link rel="preload" href="/data/servers.json" as="fetch" crossorigin>
+    <!-- Database file is preloaded by the application when needed -->
     
     <title>MCP Bundler</title>
-    
-    <!-- Alpine.js -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
     <!-- Resource loading with proper cache versioning -->
     <script>
@@ -117,10 +114,18 @@
     // Load resources with appropriate versioning
     document.write('<link rel="stylesheet" href="./css/tailwind.css?v=' + cacheBust + '">');
     document.write('<link rel="stylesheet" href="./css/app.css?v=' + cacheBust + '">');
+    
+    // Load sql.js for SQLite support
+    document.write('<script src="https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/sql-wasm.js"><\/script>');
+    
+    // Load app scripts
     document.write('<script src="./js/crypto.js?v=' + cacheBust + '"><\/script>');
     document.write('<script src="./js/store.js?v=' + cacheBust + '"><\/script>');
-    document.write('<script src="./js/app.js?v=' + cacheBust + '"><\/script>');
+    document.write('<script type="module" src="./js/app.js?v=' + cacheBust + '"><\/script>');
     </script>
+    
+    <!-- Alpine.js - Load after app.js module -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
     <!-- Only hide elements before Alpine.js loads -->
     <style>
@@ -188,7 +193,8 @@
         </header>
         
         <!-- Main Content -->
-        <main class="container mx-auto px-4 py-6 max-w-4xl md:ml-64 safe-area-left safe-area-right">
+        <main class="py-6 md:ml-64 safe-area-left safe-area-right">
+            <div class="mx-auto max-w-4xl px-4">
             
             <!-- Server Catalogue View -->
             <div x-show="currentView === 'catalogue'">
@@ -199,83 +205,170 @@
                 
                 <!-- Search and Filter -->
                 <div class="sticky top-16 md:top-0 z-30 bg-gray-50 pb-4 border-b border-gray-200 mb-6">
-                    <div class="relative mb-3">
-                        <input x-model="searchQuery" 
-                               type="text" 
-                               placeholder="Search servers..."
-                               class="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg 
-                                      focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <img src="./icons/search.svg" class="absolute left-3 top-3.5 w-4 h-4 text-gray-400" alt="Search">
+                    <div class="flex flex-col md:flex-row gap-3">
+                        <div class="relative flex-1">
+                            <input x-model="searchQuery" 
+                                   @input="performSearch()"
+                                   type="text" 
+                                   placeholder="Search servers..."
+                                   class="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg 
+                                          focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <img src="./icons/search.svg" class="absolute left-3 top-3.5 w-4 h-4 text-gray-400" alt="Search">
+                        </div>
+                        
+                        <!-- Styled Category filter dropdown -->
+                        <div class="relative md:min-w-[200px]" x-data="{ open: false }">
+                        <button @click="open = !open"
+                                @click.away="open = false"
+                                class="w-full h-12 px-4 py-3 bg-white
+                                       border border-gray-300 rounded-lg text-sm font-medium text-gray-700
+                                       hover:bg-gray-50 transition-all duration-200
+                                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1
+                                       flex items-center justify-between gap-3 min-w-[180px] shadow-sm">
+                            <div class="flex items-center gap-2">
+                                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+                                </svg>
+                                <span x-text="selectedCategory" class="text-gray-800"></span>
+                                <span x-show="categories.find(c => c.name === selectedCategory)?.server_count !== null" 
+                                      class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full"
+                                      x-text="categories.find(c => c.name === selectedCategory)?.server_count">
+                                </span>
+                            </div>
+                            <svg class="w-4 h-4 text-gray-500 transition-transform duration-200"
+                                 :class="open ? 'rotate-180' : ''"
+                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+                        
+                        <!-- Dropdown menu -->
+                        <div x-show="open"
+                             x-transition:enter="transition ease-out duration-200"
+                             x-transition:enter-start="transform opacity-0 scale-95"
+                             x-transition:enter-end="transform opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-150"
+                             x-transition:leave-start="transform opacity-100 scale-100"
+                             x-transition:leave-end="transform opacity-0 scale-95"
+                             class="absolute z-50 mt-2 w-full min-w-[200px] rounded-lg bg-white shadow-lg border border-gray-200">
+                            <div class="max-h-48 sm:max-h-64 overflow-y-auto overscroll-contain">
+                                <template x-for="category in categories" :key="category.name">
+                                    <button @click="selectCategory(category.name); open = false"
+                                            :class="selectedCategory === category.name ? 
+                                                   'bg-blue-50 text-blue-700 font-semibold' : 
+                                                   'hover:bg-gray-50 text-gray-700'"
+                                            class="w-full px-4 py-2.5 flex items-center justify-between transition-colors duration-150 text-left">
+                                        <span x-text="category.name"></span>
+                                        <span x-show="category.server_count !== null" 
+                                              class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full"
+                                              x-text="category.server_count">
+                                        </span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
                     </div>
-                    
-                    <!-- Category filter -->
-                    <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                        <template x-for="category in categories">
-                            <button @click="selectedCategory = category.id"
-                                    :class="selectedCategory === category.id ? 
-                                           'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'"
-                                    class="px-3 py-2 rounded-full text-sm font-medium whitespace-nowrap
-                                           border transition-colors min-w-max flex-shrink-0"
-                                    x-text="category.name">
-                            </button>
-                        </template>
-                    </div>
+                </div>
                 </div>
                 
                 <!-- Server Cards -->
-                <div class="space-y-3">
+                <div id="serverList" class="space-y-3">
+                    <!-- Pagination Info -->
+                    <div x-show="servers.length > 0" class="flex items-center justify-between text-sm text-gray-600 pb-2">
+                        <span>
+                            Showing <span x-text="paginationInfo.start"></span> - <span x-text="paginationInfo.end"></span> 
+                            of <span x-text="paginationInfo.total"></span> servers
+                        </span>
+                        <div class="flex items-center gap-2">
+                            <button @click="previousPage()" 
+                                    :disabled="currentPage === 1"
+                                    :class="currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'"
+                                    class="p-1 rounded border border-gray-300 bg-white flex items-center justify-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                                </svg>
+                            </button>
+                            <span class="px-3 py-1">
+                                Page <span x-text="currentPage"></span> of <span x-text="totalPages"></span>
+                            </span>
+                            <button @click="nextPage()" 
+                                    :disabled="currentPage === totalPages"
+                                    :class="currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'"
+                                    class="p-1 rounded border border-gray-300 bg-white flex items-center justify-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
                     <template x-for="server in filteredServers">
                         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                             <div class="flex items-start justify-between">
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 mb-1">
-                                        <h3 class="font-semibold text-gray-900 truncate" x-text="server.name"></h3>
-                                        <span x-show="server.official" 
-                                              class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                            <img src="./icons/official.svg" class="w-3 h-3 mr-1" alt="Official">
+                                        <h3 class="font-semibold text-gray-900 truncate" x-text="server.display_name || formatServerName(server.name)"></h3>
+                                        <div x-show="isOfficialServer(server)" 
+                                             class="inline-flex items-center px-2 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                                            <img src="./icons/official.svg" class="w-4 h-4 mr-1" alt="Official">
                                             Official
-                                        </span>
-                                        <!-- Credential Status Indicator -->
-                                        <span x-show="server.requiredSecrets && server.requiredSecrets.length > 0"
-                                              :class="{
-                                                'bg-green-100 text-green-700': getCredentialStatus(server.id) === 'complete',
-                                                'bg-yellow-100 text-yellow-700': getCredentialStatus(server.id) === 'incomplete',
-                                                'bg-gray-100 text-gray-700': getCredentialStatus(server.id) === 'locked'
-                                              }"
-                                              class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full gap-1">
-                                            <span x-show="getCredentialStatus(server.id) === 'complete'" class="flex items-center gap-1">
-                                                <img src="./icons/success.svg" class="w-3 h-3" alt="Complete">
-                                                Ready
+                                        </div>
+                                        <!-- Repository Link -->
+                                        <a x-show="server.repository" 
+                                           :href="server.repository?.url"
+                                           target="_blank"
+                                           class="inline-flex items-center text-blue-600 hover:text-blue-800 gap-1">
+                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                                                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                                            </svg>
+                                            <!-- GitHub Stars (if available in data) -->
+                                            <span x-show="server.github?.stars" class="inline-flex items-center gap-0.5 text-xs">
+                                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/>
+                                                </svg>
+                                                <span x-text="server.github?.stars?.toLocaleString()"></span>
                                             </span>
-                                            <span x-show="getCredentialStatus(server.id) === 'incomplete'" class="flex items-center gap-1">
-                                                <img src="./icons/warning.svg" class="w-3 h-3" alt="Incomplete">
-                                                Setup
-                                            </span>
-                                            <span x-show="getCredentialStatus(server.id) === 'locked'" class="flex items-center gap-1">
-                                                <img src="./icons/key.svg" class="w-3 h-3" alt="Locked">
-                                                Locked
-                                            </span>
-                                        </span>
+                                        </a>
                                     </div>
-                                    <p class="text-sm text-gray-600 mb-2 line-clamp-2" x-text="server.description"></p>
-                                    <div class="flex flex-wrap gap-1 mb-2">
-                                        <template x-for="tag in server.tags">
-                                            <button @click="searchQuery = tag" 
-                                                    class="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors cursor-pointer leading-tight h-6 flex items-center"
-                                                    style="min-height: auto; min-width: auto;"
-                                                    :title="'Search for: ' + tag">
-                                                <span x-text="tag"></span>
-                                            </button>
-                                        </template>
-                                    </div>
-                                    <!-- Required Credentials -->
-                                    <div x-show="server.requiredSecrets && server.requiredSecrets.length > 0" 
-                                         class="mt-2">
-                                        <div class="text-xs font-medium text-gray-700 mb-1">Required Secrets</div>
+                                    <p class="text-sm text-gray-600 mb-2 line-clamp-2" x-text="server.ai_description || server.description"></p>
+                                    
+                                    <!-- Keywords/Tags -->
+                                    <div x-show="server.keywords && server.keywords.length > 0" class="mb-2">
                                         <div class="flex flex-wrap gap-1">
-                                            <template x-for="secret in server.requiredSecrets">
+                                            <template x-for="keyword in (server.keywords || []).slice(0, 5)">
+                                                <button @click="searchQuery = keyword; performSearch()" class="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors cursor-pointer leading-tight h-6 flex items-center" style="min-height: auto; min-width: auto;" :title="'Search for: ' + keyword">
+                                                    <span x-text="keyword"></span>
+                                                </button>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Package Selector -->
+                                    <div x-show="server.packages && server.packages.length > 1" class="mb-2">
+                                        <select x-model="selectedPackageIndex[server.id]"
+                                                class="text-xs border border-gray-300 rounded px-2 py-1 bg-white">
+                                            <template x-for="(pkg, idx) in server.packages" :key="idx">
+                                                <option :value="idx">
+                                                    <span x-text="getPackageDisplayName(pkg)"></span>
+                                                </option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- Single Package Info -->
+                                    <div x-show="server.packages && server.packages.length === 1" class="mb-2">
+                                        <span class="text-xs text-gray-500">
+                                            <span x-text="getPackageDisplayName(server.packages[0])"></span>
+                                        </span>
+                                    </div>
+                                    <!-- Environment Variables -->
+                                    <div x-show="serverHasEnvVars(server)" 
+                                         class="mt-2">
+                                        <div class="text-xs font-medium text-gray-700 mb-1">Parameters</div>
+                                        <div class="flex flex-wrap gap-1">
+                                            <template x-for="envVar in getPackageEnvVars(server, selectedPackageIndex[server.id])">
                                                 <div class="px-2 py-0.5 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                                                    <span class="font-mono" x-text="secret"></span>
+                                                    <span class="font-mono" x-text="cleanParameterName(envVar.name)"></span>
                                                 </div>
                                             </template>
                                         </div>
@@ -305,6 +398,41 @@
                             </div>
                         </div>
                     </template>
+                    
+                    <!-- Bottom Pagination Controls -->
+                    <div x-show="servers.length > serversPerPage" class="flex justify-center items-center gap-2 pt-4 pb-2">
+                        <button @click="previousPage()" 
+                                :disabled="currentPage === 1"
+                                :class="currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'"
+                                class="px-3 py-2 rounded border border-gray-300 bg-white text-sm">
+                            Previous
+                        </button>
+                        
+                        <!-- Page number buttons -->
+                        <template x-for="page in Math.min(5, totalPages)" :key="page">
+                            <button @click="goToPage(page)" 
+                                    :class="currentPage === page ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'"
+                                    class="px-3 py-1 rounded border border-gray-300 text-sm"
+                                    x-text="page">
+                            </button>
+                        </template>
+                        
+                        <span x-show="totalPages > 5" class="px-2">...</span>
+                        
+                        <button x-show="totalPages > 5" 
+                                @click="goToPage(totalPages)" 
+                                :class="currentPage === totalPages ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'"
+                                class="px-3 py-1 rounded border border-gray-300 text-sm"
+                                x-text="totalPages">
+                        </button>
+                        
+                        <button @click="nextPage()" 
+                                :disabled="currentPage === totalPages"
+                                :class="currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'"
+                                class="px-3 py-2 rounded border border-gray-300 bg-white text-sm">
+                            Next
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -339,8 +467,8 @@
                                     </button>
                                     <button @click="shareBundle(bundle)" 
                                             class="flex items-center justify-center p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                            title="Share bundle">
-                                        <img src="./icons/share.svg" class="w-5 h-5" alt="Share">
+                                            title="Copy bundle link">
+                                        <img src="./icons/share.svg" class="w-5 h-5" alt="Copy Link">
                                     </button>
                                     <button @click="exportBundle(bundle)" 
                                             class="flex items-center justify-center p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
@@ -384,7 +512,7 @@
                             <h2 class="text-2xl font-bold mb-2">My Connections</h2>
                             <p class="text-gray-600">Manage your MCP server connections and credentials</p>
                         </div>
-                        <button @click="showCreateConnectionModal = true" 
+                        <button @click="showCreateConnectionModal = true; clearConnectionForm()" 
                                 class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-flex items-center">
                             <img src="./icons/add.svg" class="w-4 h-4 mr-2" alt="Add" style="filter: brightness(0) invert(1);">
                             New Connection
@@ -403,36 +531,35 @@
                                         <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                                             <img src="./icons/server.svg" class="w-3 h-3 mr-1" alt="Server">
                                             <span x-text="servers.find(s => s.id === connection.serverId)?.name || connection.serverId"></span>
-                                            <span class="ml-1 text-gray-500" x-text="`(${servers.find(s => s.id === connection.serverId)?.requiredSecrets?.length || 0} vars)`"></span>
+                                        </span>
+                                        <span x-show="connection.packageId" class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                            <img src="./icons/package.svg" class="w-3 h-3 mr-1" alt="Package">
+                                            Package
                                         </span>
                                         <span :class="{
-                                            'bg-green-100 text-green-700': Alpine.store('connections').hasRequiredCredentials(connection.id, servers),
-                                            'bg-yellow-100 text-yellow-700': !Alpine.store('connections').hasRequiredCredentials(connection.id, servers)
+                                            'bg-green-100 text-green-700': Alpine.store('connections').hasRequiredCredentials(connection.id),
+                                            'bg-yellow-100 text-yellow-700': !Alpine.store('connections').hasRequiredCredentials(connection.id)
                                         }" class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full gap-1">
-                                            <img :src="Alpine.store('connections').hasRequiredCredentials(connection.id, servers) ? './icons/success.svg' : './icons/warning.svg'" 
+                                            <img :src="Alpine.store('connections').hasRequiredCredentials(connection.id) ? './icons/success.svg' : './icons/warning.svg'" 
                                                  class="w-3 h-3" alt="Status">
-                                            <span x-text="Alpine.store('connections').hasRequiredCredentials(connection.id, servers) ? 'Ready' : 'Setup Required'"></span>
+                                            <span x-text="Alpine.store('connections').hasRequiredCredentials(connection.id) ? 'Ready' : 'Setup Required'"></span>
                                         </span>
                                     </div>
                                     
-                                    <!-- Required Secrets -->
-                                    <template x-for="server in servers.filter(s => s.id === connection.serverId)" :key="server.id">
-                                        <div class="mt-3" x-show="server.requiredSecrets && server.requiredSecrets.length > 0">
-                                            <h4 class="text-sm font-medium text-gray-700 mb-2">Required Secrets</h4>
-                                            <div class="flex flex-wrap gap-2">
-                                                <template x-for="secret in server.requiredSecrets" :key="secret">
-                                                    <span :class="{
-                                                        'bg-green-50 text-green-700 border-green-200': connection.credentials && connection.credentials[secret],
-                                                        'bg-yellow-50 text-yellow-700 border-yellow-200': !connection.credentials || !connection.credentials[secret]
-                                                    }" class="inline-flex items-center px-2 py-1 text-xs border rounded">
-                                                        <img :src="(connection.credentials && connection.credentials[secret]) ? './icons/success.svg' : './icons/warning.svg'" 
-                                                             class="w-3 h-3 mr-1" alt="Status">
-                                                        <span x-text="secret"></span>
-                                                    </span>
-                                                </template>
-                                            </div>
+                                    <!-- Environment Variables -->
+                                    <div class="mt-3" x-show="connection.credentials && Object.keys(connection.credentials).length > 0">
+                                        <h4 class="text-sm font-medium text-gray-700 mb-2">Environment Variables</h4>
+                                        <div class="flex flex-wrap gap-2">
+                                            <template x-for="(value, envVar) in connection.credentials" :key="envVar">
+                                                <span :class="{
+                                                    'bg-green-50 text-green-700 border-green-200': value && value.trim(),
+                                                    'bg-yellow-50 text-yellow-700 border-yellow-200': !value || !value.trim()
+                                                }" class="inline-flex items-center px-2 py-1 text-xs border rounded">
+                                                    <span x-text="envVar"></span>
+                                                </span>
+                                            </template>
                                         </div>
-                                    </template>
+                                    </div>
                                     
                                     <div class="mt-2 text-xs text-gray-500">
                                         Created <span x-text="formatDate(connection.created)"></span>
@@ -461,7 +588,7 @@
                         <img src="./icons/key.svg" class="w-16 h-16 mx-auto text-gray-400 mb-4" alt="No connections">
                         <h3 class="text-lg font-medium text-gray-900 mb-2">No connections yet</h3>
                         <p class="text-gray-500 mb-4">Create your first MCP server connection to get started</p>
-                        <button @click="showCreateConnectionModal = true" 
+                        <button @click="showCreateConnectionModal = true; clearConnectionForm()" 
                                 class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-flex items-center">
                             <img src="./icons/add.svg" class="w-4 h-4 mr-2" alt="Add" style="filter: brightness(0) invert(1);">
                             Create Connection
@@ -483,20 +610,20 @@
                             </button>
                             <div class="min-w-0 flex-1">
                                 <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 truncate" x-text="selectedBundle?.name || 'Bundle Details'"></h1>
-                                <p class="text-gray-600 mt-1" x-text="selectedBundle?.description || 'Loading bundle information...'"></p>
+                                <p class="text-gray-600 mt-1" x-text="selectedBundle?.description || ''" x-show="selectedBundle?.description"></p>
                             </div>
                         </div>
                         <div class="flex gap-3 shrink-0">
                             <button @click="shareBundle(selectedBundle)" 
                                     class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
-                                    title="Share bundle with others">
-                                <img src="./icons/share.svg" class="w-4 h-4 mr-2" alt="Share">
-                                Share
+                                    title="Copy bundle link to clipboard">
+                                <img src="./icons/share.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Copy Link">
+                                Copy Link
                             </button>
                             <button @click="showExportPreview = true" 
                                     class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
                                     title="Export bundle configuration">
-                                <img src="./icons/download.svg" class="w-4 h-4 mr-2" alt="Export">
+                                <img src="./icons/download.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Export">
                                 Export
                             </button>
                         </div>
@@ -549,7 +676,7 @@
                                 <div class="flex items-start justify-between mb-4">
                                     <div class="flex-1">
                                         <div class="flex items-center gap-3 mb-2">
-                                            <h4 class="text-lg font-semibold text-gray-900" x-text="server.name"></h4>
+                                            <h4 class="text-lg font-semibold text-gray-900" x-text="formatServerName(server.name)"></h4>
                                             <span x-show="server.official" 
                                                   class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                                 <img src="./icons/official.svg" class="w-3 h-3 mr-1" alt="Official">
@@ -558,11 +685,19 @@
                                         </div>
                                         <p class="text-gray-600 mb-3" x-text="server.description"></p>
                                         
-                                        <!-- Tags -->
-                                        <div class="flex flex-wrap gap-2 mb-4">
-                                            <template x-for="tag in server.tags || []" :key="tag">
-                                                <span class="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-sm rounded-md" x-text="tag"></span>
-                                            </template>
+                                        <!-- Package Info -->
+                                        <div class="mb-4">
+                                            <span class="text-sm text-gray-500">Package: </span>
+                                            <span class="text-sm font-medium" x-text="getPackageDisplayName(getSelectedPackage(server))"></span>
+                                        </div>
+                                        
+                                        <!-- Repository Link -->
+                                        <div x-show="server.repository" class="mb-4">
+                                            <a :href="server.repository?.url" 
+                                               target="_blank" 
+                                               class="inline-flex items-center text-blue-600 hover:text-blue-800 text-sm">
+                                                View source code →
+                                            </a>
                                         </div>
                                     </div>
                                     
@@ -574,7 +709,7 @@
                                 </div>
                                 
                                 <!-- Connection Management Section -->
-                                <div x-show="server.requiredSecrets && server.requiredSecrets.length > 0" class="bg-gray-50 rounded-lg p-4">
+                                <div x-show="selectedPackageNeedsCredentials(server)" class="bg-gray-50 rounded-lg p-4">
                                     <div class="flex items-center justify-between mb-4">
                                         <h5 class="font-medium text-gray-900">Connection Configuration</h5>
                                         <span class="text-xs px-2 py-1 rounded-full flex items-center gap-1"
@@ -607,7 +742,7 @@
                                                             </span>
                                                         </div>
                                                         <div class="text-xs text-gray-500">
-                                                            <template x-for="secret in server.requiredSecrets || []" :key="secret">
+                                                            <template x-for="secret in getPackageSecrets(server, 0) || []" :key="secret">
                                                                 <span class="inline-block mr-2">
                                                                     <span :class="connection?.credentials?.[secret] ? 'text-green-600' : 'text-red-600'" 
                                                                           x-text="secret + (connection?.credentials?.[secret] ? ' ✓' : ' ✗')"></span>
@@ -649,7 +784,7 @@
                                                                 </span>
                                                             </div>
                                                             <div class="text-xs text-gray-500">
-                                                                <template x-for="secret in server.requiredSecrets || []" :key="secret">
+                                                                <template x-for="secret in getPackageSecrets(server, 0) || []" :key="secret">
                                                                     <span class="inline-block mr-2">
                                                                         <span :class="connection.credentials?.[secret] ? 'text-green-600' : 'text-red-600'" 
                                                                               x-text="secret + (connection.credentials?.[secret] ? ' ✓' : ' ✗')"></span>
@@ -674,7 +809,7 @@
                                                         <img src="./icons/warning.svg" class="w-4 h-4 text-yellow-600 mr-2" alt="Warning">
                                                         <span class="text-sm text-yellow-800">No connections available for this server</span>
                                                     </div>
-                                                    <button @click="showCreateConnectionModal = true; newConnectionServerId = server.id; newConnectionName = ''" 
+                                                    <button @click="showCreateConnectionModal = true; clearConnectionForm(); newConnectionServerId = server.id; initializeCredentials(server.id)" 
                                                             class="px-3 py-1 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors"
                                                             title="Create a new connection for this server">
                                                         Create Connection
@@ -689,7 +824,7 @@
                                                         <img src="./icons/add.svg" class="w-4 h-4 text-blue-600 mr-2" alt="Add">
                                                         <span class="text-sm text-blue-800">Create a new connection</span>
                                                     </div>
-                                                    <button @click="showCreateConnectionModal = true; newConnectionServerId = server.id; newConnectionName = ''" 
+                                                    <button @click="showCreateConnectionModal = true; clearConnectionForm(); newConnectionServerId = server.id; initializeCredentials(server.id)" 
                                                             class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                                                             title="Create a new connection for this server">
                                                         Create
@@ -701,7 +836,7 @@
                                 </div>
                                 
                                 <!-- No credentials required -->
-                                <div x-show="!server.requiredSecrets || server.requiredSecrets.length === 0" 
+                                <div x-show="!serverNeedsCredentials(server)" 
                                      class="bg-green-50 rounded-lg p-3">
                                     <div class="flex items-center text-green-800">
                                         <img src="./icons/success.svg" class="w-4 h-4 mr-2" alt="Success">
@@ -722,7 +857,7 @@
                             <button @click="navigateToView('catalogue')" 
                                     class="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                                     title="Browse servers to add to this bundle">
-                                <img src="./icons/add.svg" class="w-4 h-4 mr-2" alt="Add">
+                                <img src="./icons/add.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Add">
                                 Browse Catalogue
                             </button>
                         </div>
@@ -738,79 +873,10 @@
                 </div>
                 
                 <div class="space-y-6">
-                    <!-- Credential Management -->
-                    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                        <h3 class="font-semibold text-gray-900 mb-3">Credential Management</h3>
-                        <div class="space-y-4">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <label class="text-sm font-medium text-gray-700">Credentials Status</label>
-                                    <p class="text-xs text-gray-500" x-text="Alpine.store('credentials').isUnlocked ? 'Unlocked and ready for use' : 'Locked - unlock to manage credentials'"></p>
-                                </div>
-                                <div class="flex gap-2">
-                                    <button x-show="!Alpine.store('credentials').isUnlocked"
-                                            @click="unlockCredentials()" 
-                                            class="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors">
-                                        Unlock
-                                    </button>
-                                    <button x-show="Alpine.store('credentials').isUnlocked"
-                                            @click="lockCredentials()" 
-                                            class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 transition-colors">
-                                        Lock
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <!-- Credential Summary -->
-                            <div x-show="Alpine.store('credentials').isUnlocked" class="border-t pt-4">
-                                <h4 class="text-sm font-medium text-gray-700 mb-2">Configured Servers</h4>
-                                <div class="space-y-2">
-                                    <template x-for="server in servers.filter(s => s.requiredSecrets && s.requiredSecrets.length > 0)">
-                                        <div class="flex items-center justify-between py-1">
-                                            <span class="text-sm text-gray-600" x-text="server.name"></span>
-                                            <div class="flex items-center gap-2">
-                                                <span :class="{
-                                                    'text-green-600': getCredentialStatus(server.id) === 'complete',
-                                                    'text-yellow-600': getCredentialStatus(server.id) === 'incomplete',
-                                                    'text-gray-600': getCredentialStatus(server.id) === 'locked'
-                                                }" class="text-xs flex items-center gap-1">
-                                                    <span x-show="getCredentialStatus(server.id) === 'complete'" class="flex items-center gap-1">
-                                                        <img src="./icons/success.svg" class="w-3 h-3" alt="Complete">
-                                                        Complete
-                                                    </span>
-                                                    <span x-show="getCredentialStatus(server.id) === 'incomplete'" class="flex items-center gap-1">
-                                                        <img src="./icons/warning.svg" class="w-3 h-3" alt="Incomplete">
-                                                        Incomplete
-                                                    </span>
-                                                    <span x-show="getCredentialStatus(server.id) === 'locked'" class="flex items-center gap-1">
-                                                        <img src="./icons/key.svg" class="w-3 h-3" alt="Locked">
-                                                        Locked
-                                                    </span>
-                                                </span>
-                                                <button @click="setCredential(server.id, server.requiredSecrets[0])" 
-                                                        class="text-xs text-blue-600 hover:text-blue-800">
-                                                    Configure
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
                     <!-- Security Settings -->
                     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                         <h3 class="font-semibold text-gray-900 mb-3">Security</h3>
                         <div class="space-y-4">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <label class="text-sm font-medium text-gray-700">Encrypt Credentials</label>
-                                    <p class="text-xs text-gray-500">Secure your stored credentials with a passphrase</p>
-                                </div>
-                                <input type="checkbox" x-model="Alpine.store('settings').data.encryptionEnabled" 
-                                       class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                            </div>
                             <button @click="clearAllData()" 
                                     class="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
                                 Clear All Data
@@ -848,76 +914,186 @@
                  class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                 <div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                     <div class="flex justify-between items-start mb-2">
-                        <h2 class="text-xl font-semibold" x-text="selectedServerForDetails?.name"></h2>
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-xl font-semibold" x-text="selectedServerForDetails?.display_name || selectedServerForDetails?.name || 'Server Details'"></h2>
+                            <div x-show="isOfficialServer(selectedServerForDetails)" 
+                                 class="inline-flex items-center px-2 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                                <img src="./icons/official.svg" class="w-4 h-4 mr-1" alt="Official">
+                                Official
+                            </div>
+                        </div>
                         <button @click="closeServerDetails()" 
                                 class="text-gray-400 hover:text-gray-600 transition-colors">
                             <img src="./icons/close.svg" class="w-6 h-6" alt="Close">
                         </button>
                     </div>
                     
-                    <!-- Status Badges -->
-                    <div class="flex items-center gap-2 mb-4">
-                        <span x-show="selectedServerForDetails?.official" 
-                              class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            <img src="./icons/official.svg" class="w-3 h-3 mr-1" alt="Official">
-                            Official
-                        </span>
-                        <span x-show="selectedServerForDetails?.requiredSecrets && selectedServerForDetails.requiredSecrets.length > 0"
-                              :class="{
-                                'bg-green-100 text-green-700': getCredentialStatus(selectedServerForDetails?.id) === 'complete',
-                                'bg-yellow-100 text-yellow-700': getCredentialStatus(selectedServerForDetails?.id) === 'incomplete',
-                                'bg-gray-100 text-gray-700': getCredentialStatus(selectedServerForDetails?.id) === 'locked'
-                              }"
-                              class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full gap-1">
-                            <span x-show="getCredentialStatus(selectedServerForDetails?.id) === 'complete'" class="flex items-center gap-1">
-                                <img src="./icons/success.svg" class="w-3 h-3" alt="Complete">
-                                Ready
-                            </span>
-                            <span x-show="getCredentialStatus(selectedServerForDetails?.id) === 'incomplete'" class="flex items-center gap-1">
-                                <img src="./icons/warning.svg" class="w-3 h-3" alt="Incomplete">
-                                Setup
-                            </span>
-                            <span x-show="getCredentialStatus(selectedServerForDetails?.id) === 'locked'" class="flex items-center gap-1">
-                                <img src="./icons/key.svg" class="w-3 h-3" alt="Locked">
-                                Locked
-                            </span>
-                        </span>
-                    </div>
                     
                     <div class="space-y-4">
                         <!-- Description -->
-                        <div>
+                        <div x-show="selectedServerForDetails?.ai_description || selectedServerForDetails?.description">
                             <h3 class="font-medium text-gray-900 mb-2">Description</h3>
-                            <p class="text-gray-600" x-text="selectedServerForDetails?.description"></p>
+                            <p class="text-gray-600" x-text="selectedServerForDetails?.ai_description || selectedServerForDetails?.description || 'No description available'"></p>
                         </div>
                         
-                        <!-- Category -->
-                        <div>
-                            <h3 class="font-medium text-gray-900 mb-2">Category</h3>
-                            <span class="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-md" 
-                                  x-text="selectedServerForDetails?.category"></span>
-                        </div>
-                        
-                        <!-- Tags -->
-                        <div x-show="selectedServerForDetails?.tags && selectedServerForDetails.tags.length > 0">
-                            <h3 class="font-medium text-gray-900 mb-2">Tags</h3>
+                        <!-- Categories -->
+                        <div x-show="selectedServerForDetails?.categories && selectedServerForDetails.categories.length > 0">
+                            <h3 class="font-medium text-gray-900 mb-2">Categories</h3>
                             <div class="flex flex-wrap gap-2">
-                                <template x-for="tag in selectedServerForDetails?.tags || []">
-                                    <span class="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-sm rounded-md" 
-                                          x-text="tag"></span>
+                                <template x-for="category in (Array.isArray(selectedServerForDetails?.categories) ? selectedServerForDetails.categories : [])">
+                                    <span class="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-md" 
+                                          x-text="category"></span>
                                 </template>
                             </div>
                         </div>
                         
+                        <!-- Keywords/Tags -->
+                        <div x-show="selectedServerForDetails?.keywords?.length > 0">
+                            <h3 class="font-medium text-gray-900 mb-2">Keywords</h3>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="keyword in (selectedServerForDetails?.keywords || [])">
+                                    <span class="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-sm rounded-md" 
+                                          x-text="keyword"></span>
+                                </template>
+                            </div>
+                        </div>
                         
-                        <!-- Required Secrets -->
-                        <div x-show="selectedServerForDetails?.requiredSecrets && selectedServerForDetails.requiredSecrets.length > 0">
-                            <h3 class="font-medium text-gray-900 mb-2">Required Secrets</h3>
+                        <!-- Repository -->
+                        <div x-show="selectedServerForDetails?.repository_url">
+                            <h3 class="font-medium text-gray-900 mb-2">Repository</h3>
                             <div class="space-y-2">
-                                <template x-for="secret in selectedServerForDetails?.requiredSecrets || []">
-                                    <div class="flex items-center justify-between p-2 bg-yellow-50 border border-yellow-200 rounded">
-                                        <span class="text-sm font-mono" x-text="secret"></span>
-                                        <span class="text-xs text-yellow-600">Required</span>
+                                <!-- Repository Path (author/repo) -->
+                                <div x-show="selectedServerForDetails?.repository_path" class="mb-2">
+                                    <span class="text-sm text-gray-600">GitHub:</span>
+                                    <span class="font-mono text-sm font-medium" x-text="selectedServerForDetails?.repository_path"></span>
+                                </div>
+                                
+                                <div class="flex items-center gap-3">
+                                    <a :href="selectedServerForDetails?.repository_url" 
+                                       target="_blank"
+                                       class="inline-flex items-center text-blue-600 hover:text-blue-800 gap-1">
+                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 16 16">
+                                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                                        </svg>
+                                        <span>View on GitHub</span>
+                                    </a>
+                                    
+                                    <!-- GitHub Stats (if available) -->
+                                    <div x-show="selectedServerForDetails?.stars" class="flex items-center gap-3 text-sm text-gray-600">
+                                        <span x-show="selectedServerForDetails?.stars" class="inline-flex items-center gap-1">
+                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                                                <path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/>
+                                            </svg>
+                                            <span x-text="selectedServerForDetails?.stars?.toLocaleString()"></span>
+                                        </span>
+                                        <span x-show="selectedServerForDetails?.forks" class="inline-flex items-center gap-1">
+                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                                                <path fill-rule="evenodd" d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v.878A2.25 2.25 0 005.75 8.5h1.5v2.128a2.251 2.251 0 101.5 0V8.5h1.5a2.25 2.25 0 002.25-2.25v-.878a2.25 2.25 0 10-1.5 0v.878a.75.75 0 01-.75.75h-4.5A.75.75 0 015 6.25v-.878zm3.75 7.378a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm3-8.75a.75.75 0 100-1.5.75.75 0 000 1.5z"/>
+                                            </svg>
+                                            <span x-text="selectedServerForDetails?.forks?.toLocaleString()"></span>
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Last Updated -->
+                                <div x-show="selectedServerForDetails?.github_updated_at" 
+                                     class="text-sm text-gray-500">
+                                    Last updated: <span x-text="selectedServerForDetails?.github_updated_at ? new Date(selectedServerForDetails.github_updated_at).toLocaleDateString() : 'Unknown'"></span>
+                                </div>
+                                
+                                <!-- Topics -->
+                                <div x-show="selectedServerForDetails?.github_topics && selectedServerForDetails.github_topics.length > 0">
+                                    <div class="flex flex-wrap gap-1 mt-2">
+                                        <template x-for="topic in (Array.isArray(selectedServerForDetails?.github_topics) ? selectedServerForDetails.github_topics : [])">
+                                            <span class="inline-block px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-md" 
+                                                  x-text="topic"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        
+                        <!-- Package Selection -->
+                        <div x-show="selectedServerForDetails?.packages && selectedServerForDetails.packages.length > 1"
+                             x-data="{ showPackageDropdown: false }">
+                            <h3 class="font-medium text-gray-900 mb-2">Select Package</h3>
+                            <div class="relative mb-4">
+                                <button @click="showPackageDropdown = !showPackageDropdown"
+                                        @click.away="showPackageDropdown = false"
+                                        class="w-full flex items-center justify-between p-3 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                    <div class="flex-1 text-left">
+                                        <div class="font-medium" x-text="(() => {
+                                            const pkg = getSelectedPackage(selectedServerForDetails);
+                                            return pkg ? getPackageDisplayName(pkg) : 'Select Package';
+                                        })()"></div>
+                                        <div class="text-sm text-gray-600" x-text="(() => {
+                                            const pkg = getSelectedPackage(selectedServerForDetails);
+                                            return pkg ? (pkg.name || pkg.package_name) : '';
+                                        })()"></div>
+                                    </div>
+                                    <svg class="w-5 h-5 text-gray-400 transform transition-transform duration-200"
+                                         :class="showPackageDropdown ? 'rotate-180' : ''"
+                                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                </button>
+                                
+                                <!-- Dropdown Menu -->
+                                <div x-show="showPackageDropdown"
+                                     x-transition:enter="transition ease-out duration-100"
+                                     x-transition:enter-start="transform opacity-0 scale-95"
+                                     x-transition:enter-end="transform opacity-100 scale-100"
+                                     x-transition:leave="transition ease-in duration-75"
+                                     x-transition:leave-start="transform opacity-100 scale-100"
+                                     x-transition:leave-end="transform opacity-0 scale-95"
+                                     class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg">
+                                    <div class="py-1">
+                                        <template x-for="(pkg, index) in (selectedServerForDetails?.packages || [])" :key="index">
+                                            <button @click="selectedPackageIndex[selectedServerForDetails?.id] = index; showPackageDropdown = false"
+                                                    class="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
+                                                    :class="(selectedPackageIndex[selectedServerForDetails?.id] || 0) === index ? 'bg-blue-50 text-blue-700' : 'text-gray-900'">
+                                                <div class="font-medium" x-text="getPackageDisplayName(pkg)"></div>
+                                                <div class="text-sm text-gray-600" x-text="pkg.name || pkg.package_name"></div>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Package.json Preview -->
+                        <div x-show="selectedServerForDetails?.packages && selectedServerForDetails.packages.length > 0">
+                            <h3 class="font-medium text-gray-900 mb-2">Claude Configuration Preview</h3>
+                            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                <div class="mb-2 flex items-center justify-between">
+                                    <span class="text-xs text-gray-500">Configuration for selected package</span>
+                                    <button @click="navigator.clipboard.writeText(JSON.stringify(getPackageConfigPreview(selectedServerForDetails), null, 2)).then(() => showToast('Configuration copied to clipboard!'))" 
+                                            class="text-xs text-blue-600 hover:text-blue-800 cursor-pointer">
+                                        Copy
+                                    </button>
+                                </div>
+                                <pre class="text-xs font-mono text-gray-700 whitespace-pre-wrap overflow-x-auto"
+                                     x-text="JSON.stringify(getPackageConfigPreview(selectedServerForDetails), null, 2)"></pre>
+                            </div>
+                        </div>
+
+                        <!-- Environment Variables / Parameters -->
+                        <div x-show="(() => {
+                            const pkg = getSelectedPackage(selectedServerForDetails);
+                            return pkg && pkg.environment_variables && pkg.environment_variables.length > 0;
+                        })()">
+                            <h3 class="font-medium text-gray-900 mb-2">Parameters</h3>
+                            <div class="space-y-2">
+                                <template x-for="envVar in (() => {
+                                    const pkg = getSelectedPackage(selectedServerForDetails);
+                                    return pkg ? pkg.environment_variables || [] : [];
+                                })()">
+                                    <div class="p-2 bg-yellow-50 border border-yellow-200 rounded">
+                                        <span class="text-sm font-mono font-medium" x-text="envVar.name"></span>
+                                        <div x-show="envVar.description" 
+                                             class="text-xs text-gray-600 mt-1" 
+                                             x-text="envVar.description"></div>
                                     </div>
                                 </template>
                             </div>
@@ -925,10 +1101,18 @@
                     </div>
                     
                     <div class="flex gap-3 mt-6">
-                        <button @click="showBundleSelector(selectedServerForDetails)" 
+                        <button @click="(() => {
+                            // Ensure we have the selected package index set before adding to bundle
+                            const serverId = selectedServerForDetails?.id;
+                            if (serverId && selectedPackageIndex[serverId] === undefined) {
+                                selectedPackageIndex[serverId] = 0;
+                            }
+                            showBundleSelector(selectedServerForDetails);
+                        })()" 
                                 class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center">
                             <img src="./icons/add.svg" class="w-4 h-4 mr-2" alt="Add" style="filter: brightness(0) invert(1);">
-                            <span>Add to Bundle</span>
+                            <span x-show="selectedServerForDetails?.packages && selectedServerForDetails.packages.length > 1">Add Selected Package to Bundle</span>
+                            <span x-show="!selectedServerForDetails?.packages || selectedServerForDetails.packages.length <= 1">Add to Bundle</span>
                         </button>
                         <button @click="closeServerDetails()" 
                                 class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
@@ -952,7 +1136,7 @@
                     
                     <div class="mb-4">
                         <p class="text-sm text-gray-600 mb-3">
-                            Add <span class="font-medium" x-text="selectedServer?.name"></span> to a bundle:
+                            Add <span class="font-medium" x-text="selectedServer?.display_name || formatServerName(selectedServer?.name) || 'Unknown Server'"></span> to a bundle:
                         </p>
                         
                         <!-- Existing bundles -->
@@ -960,9 +1144,10 @@
                             <h3 class="text-sm font-medium text-gray-900 mb-2">Select existing bundle:</h3>
                             <div class="space-y-2">
                                 <template x-for="bundle in sortedBundles" :key="bundle.id">
-                                    <button @click="addServerToBundle(bundle.id, selectedServer)"
+                                    <button @click="!(bundle.servers && bundle.servers.some(s => s.serverId === selectedServer?.id)) && addServerToBundle(bundle.id, selectedServer)"
                                             class="w-full text-left p-3 border rounded-lg transition-colors flex items-start justify-between"
-                                            :class="bundle.servers && bundle.servers.includes(selectedServer?.id) ? 'border-green-200 bg-green-50 hover:bg-green-100' : 'border-gray-200 hover:bg-gray-50'">
+                                            :class="bundle.servers && bundle.servers.some(s => s.serverId === selectedServer?.id) ? 'border-green-200 bg-green-50 cursor-not-allowed opacity-75' : 'border-gray-200 hover:bg-gray-50 cursor-pointer'"
+                                            :disabled="bundle.servers && bundle.servers.some(s => s.serverId === selectedServer?.id)"
                                         <div class="flex-1">
                                             <div class="font-medium" x-text="bundle.name"></div>
                                             <div class="text-sm text-gray-500" x-text="bundle.description"></div>
@@ -970,7 +1155,7 @@
                                                 <span x-text="(bundle.servers || []).length"></span> servers
                                             </div>
                                         </div>
-                                        <div x-show="bundle.servers && bundle.servers.includes(selectedServer?.id)" class="ml-3 flex items-center text-green-600">
+                                        <div x-show="bundle.servers && bundle.servers.some(s => s.serverId === selectedServer?.id)" class="ml-3 flex items-center text-green-600">
                                             <img src="./icons/success.svg" class="w-5 h-5" alt="Added" style="filter: brightness(0) saturate(100%) invert(42%) sepia(88%) saturate(1352%) hue-rotate(87deg) brightness(119%) contrast(109%);">
                                         </div>
                                     </button>
@@ -1014,7 +1199,7 @@
                     
                     <div class="mb-4">
                         <p class="text-sm text-gray-600 mb-4">
-                            <span x-show="selectedServer">Create a new bundle and add <span class="font-medium" x-text="selectedServer?.name"></span>:</span>
+                            <span x-show="selectedServer">Create a new bundle and add <span class="font-medium" x-text="selectedServer?.display_name || formatServerName(selectedServer?.name)"></span>:</span>
                             <span x-show="!selectedServer">Create a new bundle:</span>
                         </p>
                         
@@ -1079,41 +1264,56 @@
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">MCP Server</label>
                                 <select x-model="newConnectionServerId" 
+                                        @change="newConnectionPackageId = ''; newConnectionCredentials = {}; loadServerPackages(newConnectionServerId)"
                                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
                                     <option value="">Select a server...</option>
-                                    <template x-for="server in servers.filter(s => s.requiredSecrets && s.requiredSecrets.length > 0)" :key="server.id">
+                                    <template x-for="server in getServersWithEnvVars(servers)" :key="server.id">
                                         <option :value="server.id">
-                                            <span x-text="server.name"></span>
-                                            <span class="text-gray-500" x-text="`(${server.requiredSecrets.length} credentials)`"></span>
+                                            <span x-text="formatServerName(server.name)"></span>
                                         </option>
                                     </template>
                                 </select>
-                                <p class="text-xs text-gray-500 mt-1">Only showing servers that require credentials</p>
+                                <p class="text-xs text-gray-500 mt-1">Select a server to see available packages</p>
                             </div>
                             
-                            <!-- Show required secrets for selected server -->
-                            <template x-for="server in servers.filter(s => s.id === newConnectionServerId)" :key="server.id">
-                                <div x-show="server.requiredSecrets && server.requiredSecrets.length > 0">
-                                    <h4 class="text-sm font-medium text-gray-700 mb-2">Required Credentials</h4>
-                                    <div class="space-y-3">
-                                        <template x-for="secret in server.requiredSecrets" :key="secret">
-                                            <div>
-                                                <label class="block text-xs font-medium text-gray-600 mb-1" x-text="secret"></label>
-                                                <input x-model="newConnectionCredentials[secret]" 
-                                                       type="password" 
-                                                       :placeholder="`Enter ${secret}...`"
-                                                       class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                            </div>
+                            <!-- Package Selection -->
+                            <div x-show="newConnectionServerId">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Package</label>
+                                <select x-model="newConnectionPackageId" 
+                                        @change="initializeCredentialsForPackage(newConnectionServerId, newConnectionPackageId)"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
+                                    <option value="">Select a package...</option>
+                                    <template x-for="server in servers.filter(s => s.id === newConnectionServerId)" :key="server.id">
+                                        <template x-for="(pkg, index) in getPackagesWithEnvVars(server)" :key="index">
+                                            <option :value="`${server.id}::${pkg.registry_name}::${pkg.package_name}`" x-text="`${pkg.registry_name}/${pkg.package_name} (${pkg.runtime_hint || 'unknown'})`"></option>
                                         </template>
-                                    </div>
+                                    </template>
+                                </select>
+                            </div>
+                            
+                            <!-- Show environment variables for selected package -->
+                            <div x-show="newConnectionPackageId && newConnectionCredentials">
+                                <div class="mb-2">
+                                    <h4 class="text-sm font-medium text-gray-700">Environment Variables</h4>
                                 </div>
-                            </template>
+                                <div class="space-y-3">
+                                    <template x-for="(value, envVar) in newConnectionCredentials" :key="envVar">
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 mb-1" x-text="envVar"></label>
+                                            <input x-model="newConnectionCredentials[envVar]" 
+                                                   type="password" 
+                                                   :placeholder="`Enter ${envVar}...`"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="flex gap-3">
                         <button @click="createConnection()"
-                                :disabled="!newConnectionName?.trim() || !newConnectionServerId"
+                                :disabled="!newConnectionName?.trim() || !newConnectionServerId || !newConnectionPackageId"
                                 class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
                             Create Connection
                         </button>
@@ -1122,6 +1322,81 @@
                             Cancel
                         </button>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Edit Connection Modal -->
+            <div x-show="showEditConnectionModal" 
+                 class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
+                    <div class="flex justify-between items-start mb-4">
+                        <h2 class="text-lg font-semibold">Edit Connection</h2>
+                        <button @click="closeEditConnectionModal()" 
+                                class="text-gray-400 hover:text-gray-600 transition-colors">
+                            <img src="./icons/close.svg" class="w-6 h-6" alt="Close">
+                        </button>
+                    </div>
+                    
+                    <template x-if="editingConnection">
+                        <div>
+                            <div class="mb-4">
+                                <p class="text-sm text-gray-600 mb-4">
+                                    Update connection details:
+                                </p>
+                                
+                                <!-- Connection Name -->
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Connection Name</label>
+                                    <input x-model="editConnectionName" 
+                                           type="text" 
+                                           placeholder="Enter connection name..." 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                </div>
+                                
+                                <!-- Server Info -->
+                                <template x-for="server in servers.filter(s => s.id === editingConnection.serverId)" :key="server.id">
+                                    <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <img src="./icons/server.svg" class="w-4 h-4 text-gray-500" alt="Server">
+                                            <span class="text-sm font-medium text-gray-700" x-text="formatServerName(server.name)"></span>
+                                        </div>
+                                        <p class="text-xs text-gray-500" x-text="server.ai_description || server.description"></p>
+                                    </div>
+                                </template>
+                                
+                                <!-- Credentials -->
+                                <template x-for="server in servers.filter(s => s.id === editingConnection.serverId)" :key="server.id">
+                                    <div x-show="serverNeedsCredentials(server)">
+                                        <div class="mb-2">
+                                            <h4 class="text-sm font-medium text-gray-700">Required Credentials</h4>
+                                        </div>
+                                        <div class="space-y-3">
+                                            <template x-for="secret in getPackageSecrets(server, 0)" :key="secret">
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-600 mb-1" x-text="secret"></label>
+                                                    <input x-model="editConnectionCredentials[secret]" 
+                                                           type="password" 
+                                                           :placeholder="editConnectionCredentials[secret] ? '••••••••' : `Enter ${secret}...`"
+                                                           class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                            
+                            <div class="flex gap-3">
+                                <button @click="updateConnection()"
+                                        class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                    Update Connection
+                                </button>
+                                <button @click="closeEditConnectionModal()" 
+                                        class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
             
@@ -1152,7 +1427,7 @@
                             </div>
                             <div>
                                 <div class="text-2xl font-bold text-yellow-600" 
-                                     x-text="getBundleServers(selectedBundle || {}).filter(server => !getServerConnection(selectedBundle?.id, server.id) && server.requiredSecrets?.length > 0).length"></div>
+                                     x-text="getBundleServers(selectedBundle || {}).filter(server => !getServerConnection(selectedBundle?.id, server.id) && getPackageSecrets(server, 0)?.length > 0).length"></div>
                                 <div class="text-sm text-gray-600">Need Setup</div>
                             </div>
                         </div>
@@ -1165,14 +1440,14 @@
                             <template x-for="server in getBundleServers(selectedBundle || {})" :key="server.id">
                                 <div class="p-3 border border-gray-200 rounded-lg">
                                     <div class="flex items-center justify-between mb-2">
-                                        <span class="font-medium" x-text="server.name"></span>
-                                        <template x-if="!server.requiredSecrets || server.requiredSecrets.length === 0">
+                                        <span class="font-medium" x-text="formatServerName(server.name)"></span>
+                                        <template x-if="!serverNeedsCredentials(server)">
                                             <span class="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded gap-1">
                                                 <img src="./icons/success.svg" class="w-3 h-3" alt="Ready">
                                                 No credentials needed
                                             </span>
                                         </template>
-                                        <template x-if="server.requiredSecrets && server.requiredSecrets.length > 0">
+                                        <template x-if="serverNeedsCredentials(server)">
                                             <span x-show="getServerConnection(selectedBundle?.id, server.id)" 
                                                   class="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded gap-1">
                                                 <img src="./icons/success.svg" class="w-3 h-3" alt="Ready">
@@ -1190,9 +1465,9 @@
                                     <template x-for="connection in [getServerConnection(selectedBundle?.id, server.id)]" :key="connection?.id || 'none'">
                                         <div x-show="connection" class="text-xs text-gray-600">
                                             Connected to: <span class="font-medium" x-text="connection?.name"></span>
-                                            <template x-if="server.requiredSecrets && server.requiredSecrets.length > 0">
+                                            <template x-if="serverNeedsCredentials(server)">
                                                 <div class="mt-1">
-                                                    <template x-for="secret in server.requiredSecrets" :key="secret">
+                                                    <template x-for="secret in getPackageSecrets(server, 0)" :key="secret">
                                                         <span class="inline-block mr-2">
                                                             <span :class="connection?.credentials?.[secret] ? 'text-green-600' : 'text-red-600'" 
                                                                   x-text="secret + (connection?.credentials?.[secret] ? ' ✓' : ' ✗')"></span>
@@ -1204,10 +1479,10 @@
                                     </template>
                                     
                                     <!-- Show placeholder info if not connected -->
-                                    <div x-show="!getServerConnection(selectedBundle?.id, server.id) && server.requiredSecrets && server.requiredSecrets.length > 0" 
+                                    <div x-show="!getServerConnection(selectedBundle?.id, server.id) && serverNeedsCredentials(server)" 
                                          class="text-xs text-gray-600">
                                         Will use placeholders: 
-                                        <template x-for="secret in server.requiredSecrets" :key="secret">
+                                        <template x-for="secret in getPackageSecrets(server, 0)" :key="secret">
                                             <span class="inline-block mr-2 font-mono text-yellow-700" x-text="'${' + secret + '}'"></span>
                                         </template>
                                     </div>
@@ -1262,10 +1537,19 @@
                     <div class="mb-4">
                         <h4 class="text-sm font-medium mb-2">Servers to import:</h4>
                         <div class="space-y-1">
-                            <template x-for="serverId in importPreview?.servers || []">
+                            <template x-for="serverEntry in importPreview?.servers || []">
                                 <div class="text-sm text-gray-700 flex items-center">
                                     <img src="./icons/success.svg" class="w-4 h-4 mr-2 text-green-500" alt="Success">
-                                    <span x-text="serverId"></span>
+                                    <span x-text="(() => {
+                                        // If serverEntry is already a server object, use it directly
+                                        if (typeof serverEntry === 'object' && serverEntry.name) {
+                                            return serverEntry.name;
+                                        }
+                                        // Otherwise, find the server by ID (handling truncated IDs)
+                                        const serverId = typeof serverEntry === 'string' ? serverEntry : serverEntry.serverId;
+                                        const server = servers.find(s => s.id === serverId || s.id.startsWith(serverId));
+                                        return server ? server.name : serverId;
+                                    })()"></span>
                                 </div>
                             </template>
                         </div>
@@ -1281,6 +1565,7 @@
                         </button>
                     </div>
                 </div>
+            </div>
             </div>
         </main>
         

@@ -13,7 +13,7 @@ const STATIC_ASSETS = [
   `./js/app.js?v=${VERSION}`,
   `./js/store.js?v=${VERSION}`,
   `./js/crypto.js?v=${VERSION}`,
-  './data/servers.json',
+  `./js/database.js?v=${VERSION}`,
   './icons/icon-192.png',
   './icons/icon-512.png',
   // SVG Icons
@@ -164,20 +164,20 @@ self.addEventListener('message', event => {
   }
 });
 
-// Background sync for updating server catalogue
+// Background sync for updating database
 self.addEventListener('sync', event => {
-  if (event.tag === 'update-servers') {
-    console.log('[SW] Background sync: updating server catalogue');
+  if (event.tag === 'update-database') {
+    console.log('[SW] Background sync: updating database');
     event.waitUntil(
-      fetch('/data/servers.json')
-        .then(response => response.json())
+      fetch('/database/servers.db')
+        .then(response => response.arrayBuffer())
         .then(data => {
-          // Store updated data for the main app
+          // Cache updated database for offline use
           return caches.open(DYNAMIC_CACHE)
-            .then(cache => cache.put('/data/servers.json', new Response(JSON.stringify(data))));
+            .then(cache => cache.put('/database/servers.db', new Response(data)));
         })
         .catch(error => {
-          console.error('[SW] Failed to update server catalogue:', error);
+          console.error('[SW] Failed to update database:', error);
         })
     );
   }
@@ -185,14 +185,14 @@ self.addEventListener('sync', event => {
 
 // Periodic background sync (if supported)
 self.addEventListener('periodicsync', event => {
-  if (event.tag === 'update-servers-periodic') {
-    console.log('[SW] Periodic sync: updating server catalogue');
+  if (event.tag === 'update-database-periodic') {
+    console.log('[SW] Periodic sync: updating database');
     event.waitUntil(
-      fetch('/data/servers.json')
-        .then(response => response.json())
+      fetch('/database/servers.db')
+        .then(response => response.arrayBuffer())
         .then(data => {
           return caches.open(DYNAMIC_CACHE)
-            .then(cache => cache.put('/data/servers.json', new Response(JSON.stringify(data))));
+            .then(cache => cache.put('/database/servers.db', new Response(data)));
         })
         .catch(error => {
           console.error('[SW] Periodic sync failed:', error);
