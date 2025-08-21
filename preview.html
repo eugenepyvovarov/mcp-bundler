@@ -461,10 +461,10 @@
                     const oembedXml = document.getElementById('oembed-xml');
                     
                     if (oembedJson) {
-                        oembedJson.href = `./oembed.json?url=${encodedUrl}&format=json`;
+                        oembedJson.href = `./oembed.php?url=${encodedUrl}&format=json`;
                     }
                     if (oembedXml) {
-                        oembedXml.href = `./oembed.xml?url=${encodedUrl}&format=xml`;
+                        oembedXml.href = `./oembed.php?url=${encodedUrl}&format=xml`;
                     }
                 },
 
