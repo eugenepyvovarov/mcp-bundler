@@ -175,6 +175,9 @@
         });
     </script>
     
+    <!-- Plausible Analytics -->
+    <script defer data-domain="mcp-bundler.maketry.xyz" src="https://plausible.io/js/script.file-downloads.hash.outbound-links.pageview-props.tagged-events.js"></script>
+    <script>window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }</script>
 </head>
 <body class="bg-gray-50 text-gray-900 overflow-x-hidden">
     <!-- Main App Container -->
@@ -634,24 +637,24 @@
                 <div class="grid grid-cols-3 gap-4 md:gap-6 mb-8">
                     <div class="bg-white rounded-xl border border-gray-200 p-4 md:p-6 text-center">
                         <div class="inline-flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg mb-3">
-                            <img src="./icons/server.svg" class="w-6 h-6 text-blue-600" alt="Server">
+                                <img src="./icons/server.svg" class="w-6 h-6 text-blue-600" alt="Server">
+                            </div>
+                            <h3 class="text-sm font-medium text-gray-500 mb-1">Servers</h3>
+                            <p class="text-3xl font-bold text-gray-900" x-text="selectedBundle?.servers?.length || 0"></p>
                         </div>
-                        <h3 class="text-sm font-medium text-gray-500 mb-1">Servers</h3>
-                        <p class="text-3xl font-bold text-gray-900" x-text="selectedBundle?.servers?.length || 0"></p>
-                    </div>
                     <div class="bg-white rounded-xl border border-gray-200 p-4 md:p-6 text-center">
                         <div class="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-lg mb-3">
-                            <img src="./icons/calendar.svg" class="w-6 h-6 text-green-600" alt="Calendar">
-                        </div>
-                        <h3 class="text-sm font-medium text-gray-500 mb-1">Created</h3>
-                        <p class="text-lg font-semibold text-gray-900" x-text="formatDate(selectedBundle?.created) || 'Unknown'"></p>
-                    </div>
+                                <img src="./icons/calendar.svg" class="w-6 h-6 text-green-600" alt="Calendar">
+                            </div>
+                                <h3 class="text-sm font-medium text-gray-500 mb-1">Created</h3>
+                                <p class="text-lg font-semibold text-gray-900" x-text="formatDate(selectedBundle?.created) || 'Unknown'"></p>
+                            </div>
                     <div class="bg-white rounded-xl border border-gray-200 p-4 md:p-6 text-center">
                         <div class="inline-flex items-center justify-center w-12 h-12 bg-purple-100 rounded-lg mb-3">
-                            <img src="./icons/calendar.svg" class="w-6 h-6 text-purple-600" alt="Last Updated">
-                        </div>
-                        <h3 class="text-sm font-medium text-gray-500 mb-1">Last Updated</h3>
-                        <p class="text-lg font-semibold text-gray-900" x-text="formatDate(selectedBundle?.updated) || 'Unknown'"></p>
+                                <img src="./icons/calendar.svg" class="w-6 h-6 text-purple-600" alt="Last Updated">
+                            </div>
+                                <h3 class="text-sm font-medium text-gray-500 mb-1">Last Updated</h3>
+                                <p class="text-lg font-semibold text-gray-900" x-text="formatDate(selectedBundle?.updated) || 'Unknown'"></p>
                     </div>
                 </div>
                 
