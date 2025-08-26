@@ -58,6 +58,7 @@ document.addEventListener('alpine:init', () => {
     // Export management state
     showExportPreview: false,
     exportFormat: 'claude.json',
+    claudeCodePreview: '',
     
     // Toast notification state
     toast: {
@@ -1210,6 +1211,11 @@ document.addEventListener('alpine:init', () => {
         
         if (attachedConnection && attachedConnection.credentials) {
           // Use credentials from attached connection
+          // Ensure env object exists for all package types
+          if (!serverConfig.env) {
+            serverConfig.env = {};
+          }
+          
           Object.keys(attachedConnection.credentials).forEach(key => {
             if (attachedConnection.credentials[key] && attachedConnection.credentials[key].trim()) {
               serverConfig.env[key] = attachedConnection.credentials[key];
@@ -1219,11 +1225,18 @@ document.addEventListener('alpine:init', () => {
         } else {
           // No attached connection - use placeholder format for required secrets
           const requiredSecrets = serverUtils.getRequiredSecrets(pkg);
-          requiredSecrets.forEach(secret => {
-            if (!serverConfig.env[secret]) {
-              serverConfig.env[secret] = `\${${secret}}`;
+          if (requiredSecrets.length > 0) {
+            // Ensure env object exists for all package types
+            if (!serverConfig.env) {
+              serverConfig.env = {};
             }
-          });
+            
+            requiredSecrets.forEach(secret => {
+              if (!serverConfig.env[secret]) {
+                serverConfig.env[secret] = `\${${secret}}`;
+              }
+            });
+          }
         }
         
         // Use sanitized server name as key in the config
@@ -1338,6 +1351,98 @@ document.addEventListener('alpine:init', () => {
       document.body.removeChild(a);
       
       URL.revokeObjectURL(url);
+    },
+    
+    // Generate Claude Code preview without downloading
+    generateClaudeCodePreview(bundle) {
+      if (!bundle) return '';
+      
+      const mcpServers = {};
+      
+      bundle.servers.forEach(serverEntry => {
+        // Handle both old format (string) and new format (object)
+        const serverId = typeof serverEntry === 'object' ? serverEntry.serverId : serverEntry;
+        const packageIndex = typeof serverEntry === 'object' ? serverEntry.packageIndex : 0;
+        
+        const server = this.servers.find(s => s.id === serverId);
+        if (!server) return;
+        
+        // Get the selected package
+        const pkg = serverUtils.getPackageByIndex(server, packageIndex);
+        if (!pkg) return;
+        
+        // Build config from package
+        const serverConfig = serverUtils.buildPackageConfig(pkg);
+        
+        // Check if this server has an attached connection
+        const attachedConnection = Alpine.store('bundles').getServerConnection(bundle.id, serverId);
+        
+        if (attachedConnection && attachedConnection.credentials) {
+          // Use credentials from attached connection
+          // Ensure env object exists for all package types
+          if (!serverConfig.env) {
+            serverConfig.env = {};
+          }
+          
+          Object.keys(attachedConnection.credentials).forEach(key => {
+            if (attachedConnection.credentials[key] && attachedConnection.credentials[key].trim()) {
+              serverConfig.env[key] = attachedConnection.credentials[key];
+            }
+          });
+        } else {
+          // No attached connection - use placeholder format for required secrets
+          const requiredSecrets = serverUtils.getRequiredSecrets(pkg);
+          if (requiredSecrets.length > 0) {
+            // Ensure env object exists for all package types
+            if (!serverConfig.env) {
+              serverConfig.env = {};
+            }
+            
+            requiredSecrets.forEach(secret => {
+              if (!serverConfig.env[secret]) {
+                serverConfig.env[secret] = `\${${secret}}`;
+              }
+            });
+          }
+        }
+        
+        // Use sanitized server name as key in the config
+        const sanitizedName = server.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        mcpServers[sanitizedName] = serverConfig;
+      });
+      
+      const claudeConfig = { mcpServers };
+      return JSON.stringify(claudeConfig, null, 2);
+    },
+    
+    // Copy Claude Code preview to clipboard
+    async copyClaudeCodePreview() {
+      try {
+        if (!this.claudeCodePreview) {
+          this.showToast('No preview to copy', 'error');
+          return;
+        }
+        
+        await navigator.clipboard.writeText(this.claudeCodePreview);
+        this.showToast('Claude Code configuration copied to clipboard!', 'success');
+      } catch (error) {
+        console.error('Failed to copy to clipboard:', error);
+        this.showToast('Failed to copy to clipboard', 'error');
+      }
+    },
+    
+    // Open export preview and generate initial preview
+    openExportPreview(bundle) {
+      this.selectedBundle = bundle;
+      this.showExportPreview = true;
+      this.updateClaudeCodePreview();
+    },
+    
+    // Update Claude Code preview when format changes
+    updateClaudeCodePreview() {
+      if (this.exportFormat === 'claude-code-preview' && this.selectedBundle) {
+        this.claudeCodePreview = this.generateClaudeCodePreview(this.selectedBundle);
+      }
     },
     
     

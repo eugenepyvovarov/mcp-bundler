@@ -19,27 +19,20 @@
     // }
     </script>
     
-    <!-- Development cache management -->
+    <!-- Clean up any existing service workers -->
     <script>
-    async function clearAllCaches() {
-      // Only clear caches in development
-      
-      if (!window.isDevelopment) {
-        console.log('Cache clearing skipped in production');
-        return;
-      }
-      
+    async function cleanupServiceWorkers() {
       try {
-        // Unregister all service workers in development
+        // Unregister all service workers
         if ('serviceWorker' in navigator) {
           const registrations = await navigator.serviceWorker.getRegistrations();
           for (let registration of registrations) {
-            console.log('Unregistering service worker for development:', registration);
+            console.log('Unregistering service worker:', registration);
             await registration.unregister();
           }
         }
         
-        // Clear all caches in development
+        // Clear all caches
         if ('caches' in window) {
           const cacheNames = await caches.keys();
           for (const cacheName of cacheNames) {
@@ -48,42 +41,20 @@
           }
         }
         
-        console.log('Development: All caches and service workers cleared');
+        console.log('All service workers and caches cleared');
       } catch (error) {
-        console.warn('Failed to clear caches:', error);
+        console.warn('Failed to cleanup:', error);
       }
     }
     
-    // Only clear caches once per session to avoid reload loops
-    const cacheCleared = sessionStorage.getItem('cacheCleared');
-    if (window.isDevelopment && !cacheCleared) {
-      clearAllCaches();
-      sessionStorage.setItem('cacheCleared', 'true');
+    // Clean up on first load
+    if (!sessionStorage.getItem('cleanupDone')) {
+      cleanupServiceWorkers();
+      sessionStorage.setItem('cleanupDone', 'true');
     }
     
-    // Add manual cache clear function for debugging
-    window.clearAllCaches = clearAllCaches;
-    
-    // Register service worker in production only
-    if (!window.isDevelopment && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js')
-        .then(registration => {
-          console.log('Service Worker registered:', registration);
-        })
-        .catch(error => {
-          console.error('Service Worker registration failed:', error);
-        });
-    } else if (window.isDevelopment) {
-      console.log('Service Worker disabled in development mode');
-    }
-    
-    // Cache fix validation logging
-    console.log('🔧 Cache Fix Status:');
-    console.log(`   Environment: ${window.isDevelopment ? 'Development' : 'Production'}`);
-    console.log(`   Cache clearing: ${window.isDevelopment ? 'Enabled' : 'Disabled'}`);
-    console.log(`   Service Worker: ${!window.isDevelopment && 'serviceWorker' in navigator ? 'Enabled' : 'Disabled'}`);
-    console.log(`   Cache API support: ${'caches' in window ? 'Available' : 'Not available'}`);
-    console.log('✅ Cache configuration applied successfully');
+    // Add manual cleanup function for debugging
+    window.cleanupServiceWorkers = cleanupServiceWorkers;
     </script>
     
     <!-- PWA Meta Tags -->
@@ -623,7 +594,7 @@
                                 <img src="./icons/share.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Copy Link">
                                 Copy Link
                             </button>
-                            <button @click="showExportPreview = true" 
+                            <button @click="openExportPreview(selectedBundle)" 
                                     class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
                                     title="Export bundle configuration">
                                 <img src="./icons/download.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Export">
@@ -1405,6 +1376,7 @@
             
             <!-- Export Preview Modal -->
             <div x-show="showExportPreview" 
+                 x-effect="updateClaudeCodePreview()"
                  class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                 <div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                     <div class="flex justify-between items-start mb-4">
@@ -1506,6 +1478,13 @@
                                 </div>
                             </label>
                             <label class="flex items-center">
+                                <input type="radio" name="exportFormat" value="claude-code-preview" x-model="exportFormat" class="mr-2">
+                                <div>
+                                    <div class="font-medium">Claude Code Preview</div>
+                                    <div class="text-sm text-gray-600">Preview the generated JSON (copy to clipboard)</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center">
                                 <input type="radio" name="exportFormat" value="bundle.json" x-model="exportFormat" class="mr-2">
                                 <div>
                                     <div class="font-medium">Custom Bundle Format</div>
@@ -1515,14 +1494,33 @@
                         </div>
                     </div>
                     
+                    <!-- Claude Code Preview Textarea -->
+                    <div x-show="exportFormat === 'claude-code-preview'" class="mb-6">
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="font-medium">Claude Code Configuration</h4>
+                            <button @click="copyClaudeCodePreview()" 
+                                    class="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center gap-1">
+                                <img src="./icons/download.svg" class="w-3 h-3 filter brightness-0 invert" alt="Copy">
+                                Copy to Clipboard
+                            </button>
+                        </div>
+                        <textarea 
+                            x-model="claudeCodePreview" 
+                            readonly
+                            class="w-full h-80 p-3 bg-gray-50 border border-gray-200 rounded-lg font-mono text-sm resize-none"
+                            placeholder="Preview will appear here..."></textarea>
+                    </div>
+                    
                     <div class="flex gap-3">
                         <button @click="exportBundleWithFormat(selectedBundle, exportFormat)" 
+                                x-show="exportFormat !== 'claude-code-preview'"
                                 class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                             Export Bundle
                         </button>
                         <button @click="showExportPreview = false" 
                                 class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
-                            Cancel
+                            <span x-show="exportFormat !== 'claude-code-preview'">Cancel</span>
+                            <span x-show="exportFormat === 'claude-code-preview'">Close</span>
                         </button>
                     </div>
                 </div>
