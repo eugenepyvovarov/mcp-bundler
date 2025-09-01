@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__playwright__browser_(snapshot|evaluate|console_messages|network_requests|take_screenshot|press_key|file_upload|fill_form|press_key|navigate_back|select_option|wait_for|drag|navigate_back)",
+        "hooks": [
+          {
+            "type": "comand",
+            "command": "/Users/eugene/Projects/mcp-bundler/playwright-hook.py"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -5,6 +5,33 @@
    CSS CUSTOM PROPERTIES (CSS Variables)
    ================================================================= */
 
+/* VSCode Install Links */
+.link-button {
+  display: block;
+  padding: 10px 16px;
+  background-color: #007ACC;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin: 8px 0;
+  text-align: center;
+}
+
+.link-button:hover {
+  background-color: #005A9E;
+  text-decoration: none;
+}
+
+.link-button:active {
+  background-color: #004080;
+}
+
+
 :root {
   /* Color Palette */
   --color-primary: #3b82f6;

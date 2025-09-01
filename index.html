@@ -1485,6 +1485,20 @@
                                 </div>
                             </label>
                             <label class="flex items-center">
+                                <input type="radio" name="exportFormat" value="vscode" x-model="exportFormat" class="mr-2">
+                                <div>
+                                    <div class="font-medium">VSCode Links</div>
+                                    <div class="text-sm text-gray-600">One-click install links for VSCode MCP extension</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="exportFormat" value="cursor" x-model="exportFormat" class="mr-2">
+                                <div>
+                                    <div class="font-medium">Cursor Links</div>
+                                    <div class="text-sm text-gray-600">One-click install links for Cursor MCP extension</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center">
                                 <input type="radio" name="exportFormat" value="bundle.json" x-model="exportFormat" class="mr-2">
                                 <div>
                                     <div class="font-medium">Custom Bundle Format</div>
@@ -1499,28 +1513,44 @@
                         <div class="flex items-center justify-between mb-2">
                             <h4 class="font-medium">Claude Code Configuration</h4>
                             <button @click="copyClaudeCodePreview()" 
-                                    class="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center gap-1">
-                                <img src="./icons/download.svg" class="w-3 h-3 filter brightness-0 invert" alt="Copy">
-                                Copy to Clipboard
+                                    :class="copySuccess ? 'px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors inline-flex items-center gap-1' : 'px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center gap-1'">
+                                <img x-show="!copySuccess" src="./icons/download.svg" class="w-3 h-3 filter brightness-0 invert" alt="Copy">
+                                <img x-show="copySuccess" src="./icons/success.svg" class="w-3 h-3 filter brightness-0 invert" alt="Copied">
+                                <span x-text="copySuccess ? 'Copied!' : 'Copy to Clipboard'"></span>
                             </button>
                         </div>
                         <textarea 
                             x-model="claudeCodePreview" 
                             readonly
-                            class="w-full h-80 p-3 bg-gray-50 border border-gray-200 rounded-lg font-mono text-sm resize-none"
+                            style="height: 250px;"
+                            class="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg font-mono text-sm resize-none"
                             placeholder="Preview will appear here..."></textarea>
+                    </div>
+                    
+                    <!-- VSCode Links Preview -->
+                    <div x-show="exportFormat === 'vscode'" class="mb-6">
+                        <h4 class="font-medium mb-4">VSCode Install Links</h4>
+                        <div x-html="vscodePreview || 'Links will appear here...'">
+                        </div>
+                    </div>
+                    
+                    <!-- Cursor Links Preview -->
+                    <div x-show="exportFormat === 'cursor'" class="mb-6">
+                        <h4 class="font-medium mb-4">Cursor Install Links</h4>
+                        <div x-html="cursorPreview || 'Links will appear here...'">
+                        </div>
                     </div>
                     
                     <div class="flex gap-3">
                         <button @click="exportBundleWithFormat(selectedBundle, exportFormat)" 
-                                x-show="exportFormat !== 'claude-code-preview'"
+                                x-show="exportFormat !== 'claude-code-preview' && exportFormat !== 'vscode' && exportFormat !== 'cursor'"
                                 class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                             Export Bundle
                         </button>
                         <button @click="showExportPreview = false" 
                                 class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
-                            <span x-show="exportFormat !== 'claude-code-preview'">Cancel</span>
-                            <span x-show="exportFormat === 'claude-code-preview'">Close</span>
+                            <span x-show="exportFormat !== 'claude-code-preview' && exportFormat !== 'vscode' && exportFormat !== 'cursor'">Cancel</span>
+                            <span x-show="exportFormat === 'claude-code-preview' || exportFormat === 'vscode' || exportFormat === 'cursor'">Close</span>
                         </button>
                     </div>
                 </div>

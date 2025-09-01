@@ -59,6 +59,9 @@ document.addEventListener('alpine:init', () => {
     showExportPreview: false,
     exportFormat: 'claude.json',
     claudeCodePreview: '',
+    vscodePreview: '',
+    cursorPreview: '',
+    copySuccess: false,
     
     // Toast notification state
     toast: {
@@ -1357,7 +1360,7 @@ document.addEventListener('alpine:init', () => {
     generateClaudeCodePreview(bundle) {
       if (!bundle) return '';
       
-      const mcpServers = {};
+      const commands = [];
       
       bundle.servers.forEach(serverEntry => {
         // Handle both old format (string) and new format (object)
@@ -1408,11 +1411,148 @@ document.addEventListener('alpine:init', () => {
         
         // Use sanitized server name as key in the config
         const sanitizedName = server.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        mcpServers[sanitizedName] = serverConfig;
+        
+        // Generate claude mcp add-json command
+        const jsonConfig = JSON.stringify(serverConfig);
+        const command = `claude mcp add-json ${sanitizedName} '${jsonConfig}'`;
+        commands.push(command);
       });
       
-      const claudeConfig = { mcpServers };
-      return JSON.stringify(claudeConfig, null, 2);
+      return commands.join('\n\n');
+    },
+    
+    // Generate VSCode install links
+    generateVSCodePreview(bundle) {
+      if (!bundle) return '';
+      
+      const links = [];
+      
+      bundle.servers.forEach(serverEntry => {
+        // Handle both old format (string) and new format (object)
+        const serverId = typeof serverEntry === 'object' ? serverEntry.serverId : serverEntry;
+        const packageIndex = typeof serverEntry === 'object' ? serverEntry.packageIndex : 0;
+        
+        const server = this.servers.find(s => s.id === serverId);
+        if (!server) return;
+        
+        // Get the selected package
+        const pkg = serverUtils.getPackageByIndex(server, packageIndex);
+        if (!pkg) return;
+        
+        // Build config from package
+        const serverConfig = serverUtils.buildPackageConfig(pkg);
+        
+        // Check if this server has an attached connection
+        const attachedConnection = Alpine.store('bundles').getServerConnection(bundle.id, serverId);
+        
+        if (attachedConnection && attachedConnection.credentials) {
+          // Use credentials from attached connection
+          // Ensure env object exists for all package types
+          if (!serverConfig.env) {
+            serverConfig.env = {};
+          }
+          
+          Object.keys(attachedConnection.credentials).forEach(key => {
+            if (attachedConnection.credentials[key] && attachedConnection.credentials[key].trim()) {
+              serverConfig.env[key] = attachedConnection.credentials[key];
+            }
+          });
+        } else {
+          // No attached connection - use placeholder format for required secrets
+          const requiredSecrets = serverUtils.getRequiredSecrets(pkg);
+          if (requiredSecrets.length > 0) {
+            // Ensure env object exists for all package types
+            if (!serverConfig.env) {
+              serverConfig.env = {};
+            }
+            
+            requiredSecrets.forEach(secret => {
+              if (!serverConfig.env[secret]) {
+                serverConfig.env[secret] = `\${${secret}}`;
+              }
+            });
+          }
+        }
+        
+        // Create VSCode install URL
+        const vscodeParams = {
+          name: server.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+          gallery: false, // Set to false since these are custom configs
+          config: serverConfig
+        };
+        
+        const encodedParams = encodeURIComponent(JSON.stringify(vscodeParams));
+        const vscodeUrl = `vscode:mcp/install?${encodedParams}`;
+        
+        const linkHtml = `<a class="link-button" href="${vscodeUrl}">Install ${server.name}</a>`;
+        links.push(linkHtml);
+      });
+      
+      return links.join('\n\n');
+    },
+    
+    // Generate Cursor install links
+    generateCursorPreview(bundle) {
+      if (!bundle) return '';
+      
+      const links = [];
+      
+      bundle.servers.forEach(serverEntry => {
+        // Handle both old format (string) and new format (object)
+        const serverId = typeof serverEntry === 'object' ? serverEntry.serverId : serverEntry;
+        const packageIndex = typeof serverEntry === 'object' ? serverEntry.packageIndex : 0;
+        
+        const server = this.servers.find(s => s.id === serverId);
+        if (!server) return;
+        
+        // Get the selected package
+        const pkg = serverUtils.getPackageByIndex(server, packageIndex);
+        if (!pkg) return;
+        
+        // Build config from package
+        const serverConfig = serverUtils.buildPackageConfig(pkg);
+        
+        // Check if this server has an attached connection
+        const attachedConnection = Alpine.store('bundles').getServerConnection(bundle.id, serverId);
+        
+        if (attachedConnection && attachedConnection.credentials) {
+          // Use credentials from attached connection
+          // Ensure env object exists for all package types
+          if (!serverConfig.env) {
+            serverConfig.env = {};
+          }
+          
+          Object.keys(attachedConnection.credentials).forEach(key => {
+            if (attachedConnection.credentials[key] && attachedConnection.credentials[key].trim()) {
+              serverConfig.env[key] = attachedConnection.credentials[key];
+            }
+          });
+        } else {
+          // No attached connection - use placeholder format for required secrets
+          const requiredSecrets = serverUtils.getRequiredSecrets(pkg);
+          if (requiredSecrets.length > 0) {
+            // Ensure env object exists for all package types
+            if (!serverConfig.env) {
+              serverConfig.env = {};
+            }
+            
+            requiredSecrets.forEach(secret => {
+              if (!serverConfig.env[secret]) {
+                serverConfig.env[secret] = `\${${secret}}`;
+              }
+            });
+          }
+        }
+        
+        // Create Cursor install URL with base64 encoded config
+        const configBase64 = btoa(JSON.stringify(serverConfig));
+        const cursorUrl = `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent(server.name)}&config=${configBase64}`;
+        
+        const linkHtml = `<a class="link-button" href="${cursorUrl}">Install ${server.name}</a>`;
+        links.push(linkHtml);
+      });
+      
+      return links.join('\n\n');
     },
     
     // Copy Claude Code preview to clipboard
@@ -1424,7 +1564,39 @@ document.addEventListener('alpine:init', () => {
         }
         
         await navigator.clipboard.writeText(this.claudeCodePreview);
+        
+        // Show success feedback
+        this.copySuccess = true;
         this.showToast('Claude Code configuration copied to clipboard!', 'success');
+        
+        // Reset after 1 second
+        setTimeout(() => {
+          this.copySuccess = false;
+        }, 1000);
+      } catch (error) {
+        console.error('Failed to copy to clipboard:', error);
+        this.showToast('Failed to copy to clipboard', 'error');
+      }
+    },
+    
+    // Copy VSCode preview to clipboard
+    async copyVSCodePreview() {
+      try {
+        if (!this.vscodePreview) {
+          this.showToast('No preview to copy', 'error');
+          return;
+        }
+        
+        await navigator.clipboard.writeText(this.vscodePreview);
+        
+        // Show success feedback
+        this.copySuccess = true;
+        this.showToast('VSCode links copied to clipboard!', 'success');
+        
+        // Reset after 1 second
+        setTimeout(() => {
+          this.copySuccess = false;
+        }, 1000);
       } catch (error) {
         console.error('Failed to copy to clipboard:', error);
         this.showToast('Failed to copy to clipboard', 'error');
@@ -1438,10 +1610,14 @@ document.addEventListener('alpine:init', () => {
       this.updateClaudeCodePreview();
     },
     
-    // Update Claude Code preview when format changes
+    // Update preview when format changes
     updateClaudeCodePreview() {
       if (this.exportFormat === 'claude-code-preview' && this.selectedBundle) {
         this.claudeCodePreview = this.generateClaudeCodePreview(this.selectedBundle);
+      } else if (this.exportFormat === 'vscode' && this.selectedBundle) {
+        this.vscodePreview = this.generateVSCodePreview(this.selectedBundle);
+      } else if (this.exportFormat === 'cursor' && this.selectedBundle) {
+        this.cursorPreview = this.generateCursorPreview(this.selectedBundle);
       }
     },
     

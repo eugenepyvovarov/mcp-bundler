@@ -123,13 +123,13 @@
                             Import Bundle
                         </button>
                         <button @click="copyLink()" 
-                                class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
+                                class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
                                 title="Copy share link">
                             <img src="./icons/share.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Share">
                             Copy Link
                         </button>
                         <button @click="openExportPreview()" 
-                                class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
+                                class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
                                 title="Export bundle configuration">
                             <img src="./icons/download.svg" class="w-4 h-4 mr-2 filter brightness-0 invert" alt="Export">
                             Export
@@ -446,7 +446,10 @@
                             
                             // Try to decode as binary first
                             const binaryString = atob(paddedBase64);
-                            const binaryData = new Uint8Array(binaryString.split('').map(char => char.charCodeAt(0)));
+                            const binaryData = new Uint8Array(binaryString.length);
+                            for (let i = 0; i < binaryString.length; i++) {
+                                binaryData[i] = binaryString.charCodeAt(i);
+                            }
                             
                             // Attempt binary unpacking
                             this.bundle = this.unpackBundle(binaryData);
@@ -498,16 +501,6 @@
                             // Transform database results to match expected format
                             const transformedServers = await this.transformServersFromDB(allServers);
                             
-                            // Load package data for each server
-                            for (const server of transformedServers) {
-                                try {
-                                    server.packages = await window.database.getServerPackages(server.id);
-                                } catch (error) {
-                                    console.warn(`Failed to load packages for server ${server.id}:`, error);
-                                    server.packages = [];
-                                }
-                            }
-                            
                             // Validate that servers exist in our catalogue
                             // Handle both full UUIDs and truncated IDs (binary packing uses first 8 chars)
                             this.validServers = this.bundle.servers.filter(serverEntry => {
@@ -549,7 +542,6 @@
                         if (transformedServer.packages && Array.isArray(transformedServer.packages)) {
                             transformedServer.packages = transformedServer.packages.map(pkg => ({
                                 registry_name: pkg.registry_name,
-                                package_name: pkg.package_name || pkg.name,
                                 name: pkg.package_name || pkg.name,
                                 version: pkg.version,
                                 runtime_hint: pkg.runtime_hint
@@ -663,94 +655,30 @@
                     this.updateExportPreview();
                 },
 
-                // Enhance packages with complete data for export
-                async enhancePackagesForExport() {
-                    const enhancedServers = [];
-                    
-                    for (const server of this.validServers) {
-                        const enhancedServer = { ...server };
-                        
-                        // Load complete package data if needed
-                        if (window.database) {
-                            try {
-                                const packageData = await window.database.getServerPackages(server.id);
-                                
-                                // Transform packages using buildPackageConfig
-                                enhancedServer.packages = packageData.map(pkg => {
-                                    const enhancedPkg = {
-                                        registry_name: pkg.registry_name,
-                                        package_name: pkg.package_name,
-                                        name: pkg.package_name || pkg.name,
-                                        version: pkg.version,
-                                        runtime_hint: pkg.runtime_hint,
-                                        environment_variables: pkg.environment_variables || [],
-                                        package_arguments: pkg.package_arguments || []
-                                    };
-                                    
-                                    // Use buildPackageConfig to get the proper structure
-                                    if (window.serverUtils && window.serverUtils.buildPackageConfig) {
-                                        const config = window.serverUtils.buildPackageConfig(enhancedPkg);
-                                        
-                                        // Merge the config properties into the package
-                                        if (config.type) enhancedPkg.type = config.type;
-                                        if (config.command) enhancedPkg.command = config.command;
-                                        if (config.args) enhancedPkg.args = config.args;
-                                        if (config.url) enhancedPkg.url = config.url;
-                                        if (config.headers) enhancedPkg.headers = config.headers;
-                                        if (config.env) enhancedPkg.env = config.env;
-                                    }
-                                    
-                                    // Fallback: ensure npm/pypi packages have stdio type
-                                    if (!enhancedPkg.type) {
-                                        if (enhancedPkg.registry_name === 'npm' || enhancedPkg.registry_name === 'pypi') {
-                                            enhancedPkg.type = 'stdio';
-                                        } else if (enhancedPkg.registry_name === 'docker') {
-                                            enhancedPkg.type = 'stdio';
-                                        }
-                                    }
-                                    
-                                    return enhancedPkg;
-                                });
-                            } catch (error) {
-                                console.warn(`Failed to enhance packages for server ${server.id}:`, error);
-                                enhancedServer.packages = server.packages || [];
-                            }
-                        }
-                        
-                        enhancedServers.push(enhancedServer);
-                    }
-                    
-                    return enhancedServers;
-                },
-
-                async updateExportPreview() {
+                updateExportPreview() {
                     console.log('updateExportPreview called with format:', this.exportFormat);
                     console.log('Bundle:', this.bundle);
                     console.log('Valid servers:', this.validServers);
                     
                     if (this.exportFormat === 'claude-code-preview' && this.bundle) {
-                        const enhancedServers = await this.enhancePackagesForExport();
-                        this.claudeCodePreview = this.generateClaudeCodePreview(this.bundle, enhancedServers);
+                        this.claudeCodePreview = this.generateClaudeCodePreview(this.bundle);
                         console.log('Generated Claude Code preview:', this.claudeCodePreview);
                     } else if (this.exportFormat === 'vscode' && this.bundle) {
-                        const enhancedServers = await this.enhancePackagesForExport();
-                        this.vscodePreview = this.generateVSCodePreview(this.bundle, enhancedServers);
+                        this.vscodePreview = this.generateVSCodePreview(this.bundle);
                         console.log('Generated VSCode preview:', this.vscodePreview);
                     } else if (this.exportFormat === 'cursor' && this.bundle) {
-                        const enhancedServers = await this.enhancePackagesForExport();
-                        this.cursorPreview = this.generateCursorPreview(this.bundle, enhancedServers);
+                        this.cursorPreview = this.generateCursorPreview(this.bundle);
                         console.log('Generated Cursor preview:', this.cursorPreview);
                     }
                 },
 
-                generateClaudeCodePreview(bundle, enhancedServers = null) {
+                generateClaudeCodePreview(bundle) {
                     if (!bundle || !bundle.servers) return '';
                     
-                    const servers = enhancedServers || this.validServers;
                     const commands = [];
                     
                     bundle.servers.forEach(serverId => {
-                        const server = servers.find(s => s.id === serverId || s.id.startsWith(serverId));
+                        const server = this.validServers.find(s => s.id === serverId);
                         if (!server || !server.packages || server.packages.length === 0) return;
                         
                         const pkg = server.packages[0]; // Use first package
@@ -793,51 +721,30 @@
                     return commands.join('\n\n');
                 },
 
-                generateVSCodePreview(bundle, enhancedServers = null) {
+                generateVSCodePreview(bundle) {
                     console.log('generateVSCodePreview called with:', bundle);
                     if (!bundle || !bundle.servers) {
                         console.log('No bundle or servers');
                         return '';
                     }
                     
-                    const servers = enhancedServers || this.validServers;
                     console.log('Bundle servers:', bundle.servers);
                     const links = [];
                     
                     bundle.servers.forEach(serverId => {
                         console.log('Processing server ID:', serverId);
-                        const server = servers.find(s => s.id === serverId || s.id.startsWith(serverId));
+                        const server = this.validServers.find(s => s.id === serverId);
                         console.log('Found server:', server);
-                        if (!server) {
-                            console.log('Server not found for ID:', serverId);
-                            return;
-                        }
-                        
-                        console.log('Server packages:', server.packages);
-                        if (!server.packages || server.packages.length === 0) {
-                            console.log('No packages for server:', server.name);
+                        if (!server || !server.packages || server.packages.length === 0) {
+                            console.log('Server not found or no packages');
                             return;
                         }
                         
                         const pkg = server.packages[0]; // Use first package
-                        console.log('Using package for', server.name, ':', pkg);
+                        console.log('Using package:', pkg);
                         if (!pkg) {
-                            console.log('No package found for server:', server.name);
+                            console.log('No package found');
                             return;
-                        }
-                        
-                        // Check if package has required fields, add fallback for type
-                        if (!pkg.type) {
-                            console.log('Package missing type for server:', server.name, 'setting fallback');
-                            // Set fallback type based on registry
-                            if (pkg.registry_name === 'npm' || pkg.registry_name === 'pypi') {
-                                pkg.type = 'stdio';
-                            } else if (pkg.registry_name === 'docker') {
-                                pkg.type = 'stdio';
-                            } else {
-                                console.log('No fallback type available for:', server.name);
-                                return;
-                            }
                         }
                         
                         let serverConfig = {};
@@ -883,14 +790,13 @@
                     return links.join('\n\n');
                 },
 
-                generateCursorPreview(bundle, enhancedServers = null) {
+                generateCursorPreview(bundle) {
                     if (!bundle || !bundle.servers) return '';
                     
-                    const servers = enhancedServers || this.validServers;
                     const links = [];
                     
                     bundle.servers.forEach(serverId => {
-                        const server = servers.find(s => s.id === serverId || s.id.startsWith(serverId));
+                        const server = this.validServers.find(s => s.id === serverId);
                         if (!server || !server.packages || server.packages.length === 0) return;
                         
                         const pkg = server.packages[0]; // Use first package
@@ -963,7 +869,7 @@
                     if (format === 'claude.json') {
                         const mcpServers = {};
                         bundle.servers.forEach(serverId => {
-                            const server = this.validServers.find(s => s.id === serverId || s.id.startsWith(serverId));
+                            const server = this.validServers.find(s => s.id === serverId);
                             if (!server || !server.packages || server.packages.length === 0) return;
                             
                             const pkg = server.packages[0];
